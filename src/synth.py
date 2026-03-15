@@ -3,7 +3,7 @@ Differentiable subtractive synthesizer in pure PyTorch.
 
 Signal chain: Oscillators → Mixer → Low-pass Filter → Amplifier (ADSR envelope) → Reverb → Output
 
-15 parameters, all in [0, 1], all differentiable.
+18 parameters, all in [0, 1], all differentiable.
 """
 
 import math
@@ -30,6 +30,9 @@ PARAM_DEFS = [
     ("filter_env", -1.0, 1.0),
     ("reverb_size", 0.01, 0.99),
     ("reverb_mix", 0.0, 0.8),
+    ("unison_voices", 1.0, 7.0),
+    ("unison_spread", 0.0, 0.5),
+    ("noise_floor", 0.0, 0.1),
 ]
 
 
@@ -152,27 +155,49 @@ class SynthPatch:
         n_samples = int(duration * self.sr)
         t = torch.linspace(0, duration, n_samples, device=params_tensor.device)
 
-        # Oscillators
-        phase = (2.0 * math.pi * f0_hz * t) % (2.0 * math.pi)
-        detune_ratio = 2.0 ** (p["detune"] / 12.0)
-        phase2 = (2.0 * math.pi * f0_hz * detune_ratio * t) % (2.0 * math.pi)
+        # Unison: generate multiple detuned copies of each waveform
+        n_voices = max(1, int(round(p["unison_voices"].item())))
+        spread = p["unison_spread"]
 
-        saw1 = _saw(phase)
-        saw2 = _saw(phase2)
-        sq1 = _square(phase)
-        sq2 = _square(phase2)
-        sine1 = torch.sin(phase)
-        sine2 = torch.sin(phase2)
+        # Detune offsets for unison voices: evenly spread around center
+        if n_voices == 1:
+            voice_detunes = [0.0]
+        else:
+            voice_detunes = [spread.item() * (2.0 * i / (n_voices - 1) - 1.0) for i in range(n_voices)]
+
+        # Accumulate all voices
+        saw_sum = torch.zeros(n_samples, device=params_tensor.device)
+        sq_sum = torch.zeros(n_samples, device=params_tensor.device)
+        sine_sum = torch.zeros(n_samples, device=params_tensor.device)
+
+        for vd in voice_detunes:
+            # Each voice gets the main detune + its unison offset
+            total_detune = p["detune"] + vd
+            voice_ratio = 2.0 ** (total_detune / 12.0)
+            voice_phase = (2.0 * math.pi * f0_hz * voice_ratio * t) % (2.0 * math.pi)
+
+            saw_sum = saw_sum + _saw(voice_phase)
+            sq_sum = sq_sum + _square(voice_phase)
+            sine_sum = sine_sum + torch.sin(voice_phase)
+
+        # Average across voices
+        saw_sum = saw_sum / n_voices
+        sq_sum = sq_sum / n_voices
+        sine_sum = sine_sum / n_voices
+
         noise = torch.randn(n_samples, device=params_tensor.device)
 
         signal = (
-            p["saw_mix"] * (saw1 + saw2) / 2.0
-            + p["square_mix"] * (sq1 + sq2) / 2.0
-            + p["sine_mix"] * (sine1 + sine2) / 2.0
+            p["saw_mix"] * saw_sum
+            + p["square_mix"] * sq_sum
+            + p["sine_mix"] * sine_sum
             + p["noise_mix"] * noise
         )
         total_mix = (p["saw_mix"] + p["square_mix"] + p["sine_mix"] + p["noise_mix"]).clamp(min=0.01)
         signal = signal / total_mix
+
+        # Add noise floor (subtle breathiness always present)
+        signal = signal + p["noise_floor"] * torch.randn(n_samples, device=params_tensor.device)
 
         # ADSR envelope
         env = _make_adsr(n_samples, p["attack"], p["decay"], p["sustain"],

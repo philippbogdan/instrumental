@@ -4,12 +4,15 @@ the perceptual loss between rendered audio and a target audio clip.
 """
 
 import time
-from typing import Optional
+from typing import List, Optional
 
+import numpy as np
 import torch
 
 from src.synth import SynthPatch
-from src.losses import MultiResSTFTLoss
+from src.losses import MultiResSTFTLoss, get_loss
+from src.spectral_init import spectral_init
+from src.cmaes_search import cmaes_search
 
 
 def match_sound(
@@ -179,3 +182,181 @@ def run_level0_experiment(n_runs: int = 5) -> dict:
         "all_times": all_times,
         "all_converged": all_converged,
     }
+
+
+def match_sound_v2(
+    target_notes: List[dict],
+    synth: SynthPatch,
+    loss_fn,
+    init_params: Optional[torch.Tensor] = None,
+    n_steps: int = 500,
+    lr: float = 0.02,
+) -> dict:
+    """
+    Improved optimization with cosine-annealing LR, gradient noise, and multi-pitch loss.
+
+    Args:
+        target_notes: list of dicts {'audio': torch.Tensor, 'freq': float}
+        synth: SynthPatch instance
+        loss_fn: callable(generated, target) -> scalar loss tensor
+        init_params: optional starting params tensor (n_params,); random if None
+        n_steps: gradient descent steps
+        lr: initial Adam learning rate
+
+    Returns:
+        dict with keys: params, loss, history, time_seconds
+    """
+    if init_params is not None:
+        params = init_params.clone().detach().float().requires_grad_(True)
+    else:
+        params = synth.random_params().requires_grad_(True)
+
+    optimizer = torch.optim.Adam([params], lr=lr)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer, T_0=50, T_mult=2, eta_min=0.001
+    )
+
+    # Pre-process targets to 3D for loss_fn
+    prepared_targets = []
+    for note in target_notes:
+        audio = note["audio"]
+        if audio.dim() == 1:
+            audio = audio.unsqueeze(0)  # (1, T)
+        if audio.dim() == 2:
+            audio = audio.unsqueeze(0)  # (1, 1, T)
+        prepared_targets.append({"audio": audio.detach(), "freq": note["freq"]})
+
+    best_params = params.detach().clone()
+    best_loss = float("inf")
+    history = []
+    t0 = time.time()
+
+    for step in range(n_steps):
+        optimizer.zero_grad()
+
+        # Multi-pitch loss: sum across all target notes
+        total_loss = torch.tensor(0.0)
+        for target in prepared_targets:
+            duration = target["audio"].shape[-1] / synth.sr
+            generated = synth.render(params, f0_hz=target["freq"], duration=duration)
+            # Ensure 3D
+            if generated.dim() == 1:
+                generated = generated.unsqueeze(0).unsqueeze(0)
+            elif generated.dim() == 2:
+                generated = generated.unsqueeze(0)
+            total_loss = total_loss + loss_fn(generated, target["audio"])
+
+        if torch.isnan(total_loss):
+            with torch.no_grad():
+                params.copy_(best_params)
+            continue
+
+        total_loss.backward()
+
+        # Gradient noise for exploration
+        if params.grad is not None:
+            params.grad.nan_to_num_(nan=0.0)
+            noise = torch.randn_like(params.grad) * 0.01 / (1 + step) ** 0.55
+            params.grad.add_(noise)
+            torch.nn.utils.clip_grad_norm_([params], max_norm=1.0)
+
+        optimizer.step()
+        scheduler.step()
+
+        with torch.no_grad():
+            params.clamp_(0.0, 1.0)
+
+        loss_val = total_loss.item()
+
+        if loss_val < best_loss:
+            best_loss = loss_val
+            best_params = params.detach().clone()
+
+        if step % 50 == 0:
+            history.append({"step": step, "loss": loss_val})
+            print(f"  step {step:4d}: loss={loss_val:.6f}")
+
+        if loss_val < 0.001:
+            print(f"  Early stop at step {step}: loss={loss_val:.6f}")
+            break
+
+    elapsed = time.time() - t0
+
+    return {
+        "params": best_params,
+        "loss": best_loss,
+        "history": history,
+        "time_seconds": elapsed,
+    }
+
+
+def full_pipeline(
+    target_notes: List[dict],
+    synth: SynthPatch,
+    n_cmaes: int = 3000,
+    n_adam: int = 500,
+) -> dict:
+    """
+    Full CMA-ES -> Adam hybrid optimization pipeline.
+
+    Step 1: Spectral init on the first note's audio -> init_params
+    Step 2: CMA-ES global search with init_params -> cmaes_params
+    Step 3: Adam refinement with match_sound_v2 -> final result
+
+    Args:
+        target_notes: list of dicts {'audio': torch.Tensor, 'freq': float}
+        synth: SynthPatch instance
+        n_cmaes: CMA-ES function evaluations
+        n_adam: Adam gradient descent steps
+
+    Returns:
+        dict with keys: params, loss, history, time_seconds,
+                        init_params, cmaes_params
+    """
+    loss_fn = get_loss("matching")
+    pipeline_t0 = time.time()
+
+    # --- Step 1: Spectral init ---
+    t0 = time.time()
+    first_audio = target_notes[0]["audio"]
+    if first_audio.dim() > 1:
+        first_audio_np = first_audio.squeeze().numpy()
+    else:
+        first_audio_np = first_audio.numpy()
+    init_params = spectral_init(first_audio_np, sr=synth.sr)
+    t1 = time.time()
+    print(f"[Pipeline] Step 1 - Spectral init: {t1 - t0:.1f}s")
+
+    # --- Step 2: CMA-ES global search ---
+    t0 = time.time()
+    cmaes_result = cmaes_search(
+        target_notes,
+        synth,
+        loss_fn,
+        n_evals=n_cmaes,
+        init_params=init_params.numpy(),
+    )
+    cmaes_params = cmaes_result["params"]
+    t1 = time.time()
+    print(f"[Pipeline] Step 2 - CMA-ES: {t1 - t0:.1f}s (loss={cmaes_result['loss']:.6f})")
+
+    # --- Step 3: Adam refinement ---
+    t0 = time.time()
+    result = match_sound_v2(
+        target_notes,
+        synth,
+        loss_fn,
+        init_params=cmaes_params,
+        n_steps=n_adam,
+    )
+    t1 = time.time()
+    print(f"[Pipeline] Step 3 - Adam: {t1 - t0:.1f}s (loss={result['loss']:.6f})")
+
+    total_time = time.time() - pipeline_t0
+    print(f"[Pipeline] Total: {total_time:.1f}s")
+
+    result["init_params"] = init_params
+    result["cmaes_params"] = cmaes_params
+    result["time_seconds"] = total_time
+
+    return result

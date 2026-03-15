@@ -124,6 +124,80 @@ class SpectralFeatureLoss:
         return centroid_loss / (mag_gen.shape[1] + 1e-8) + flatness_loss + rms_loss
 
 
+class MelSTFTLoss:
+    """Multi-resolution STFT loss with mel scaling and perceptual weighting."""
+
+    def __init__(self):
+        self._loss = AF.MultiResolutionSTFTLoss(
+            fft_sizes=[1024, 2048, 8192],
+            hop_sizes=[256, 512, 2048],
+            win_lengths=[1024, 2048, 8192],
+            scale="mel",
+            n_bins=128,
+            sample_rate=44100,
+            perceptual_weighting=True,
+        )
+
+    def __call__(self, generated: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        gen = _ensure_3d(generated)
+        tgt = _ensure_3d(target)
+        return self._loss(gen, tgt)
+
+
+class CentroidLoss:
+    """Differentiable spectral centroid L1 distance, normalized by sr/2."""
+
+    def __init__(self, sample_rate: int = 44100, n_fft: int = 2048, hop_length: int = 512):
+        self.sample_rate = sample_rate
+        self.n_fft = n_fft
+        self.hop_length = hop_length
+
+    def _stft_mag(self, x: torch.Tensor) -> torch.Tensor:
+        """Compute STFT magnitude. x: (batch, samples) -> (batch, freq, time)"""
+        window = torch.hann_window(self.n_fft, device=x.device)
+        stft = torch.stft(
+            x, n_fft=self.n_fft, hop_length=self.hop_length,
+            window=window, return_complex=True,
+        )
+        return stft.abs()
+
+    def _centroid(self, mag: torch.Tensor) -> torch.Tensor:
+        """Weighted mean frequency. mag: (batch, freq, time) -> (batch,)"""
+        n_bins = mag.shape[1]
+        freqs = torch.arange(n_bins, dtype=torch.float32, device=mag.device)
+        # sum across time first, then compute centroid per batch
+        mag_sum = mag.sum(dim=2)  # (batch, freq)
+        total = mag_sum.sum(dim=1, keepdim=True).clamp(min=1e-8)  # (batch, 1)
+        centroid = (mag_sum * freqs.unsqueeze(0)).sum(dim=1) / total.squeeze(1)  # (batch,)
+        return centroid
+
+    def __call__(self, generated: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        gen = _ensure_3d(generated).squeeze(1)  # (batch, samples)
+        tgt = _ensure_3d(target).squeeze(1)
+        mag_gen = self._stft_mag(gen)
+        mag_tgt = self._stft_mag(tgt)
+        c_gen = self._centroid(mag_gen)
+        c_tgt = self._centroid(mag_tgt)
+        nyquist_bin = self.n_fft // 2 + 1
+        return torch.mean(torch.abs(c_gen - c_tgt)) / nyquist_bin
+
+
+class MatchingLoss:
+    """Combined loss: 1.0 * MelSTFT + 0.1 * Centroid + 0.05 * MFCC."""
+
+    def __init__(self):
+        self._mel_stft = MelSTFTLoss()
+        self._centroid = CentroidLoss()
+        self._mfcc = MFCCLoss()
+
+    def __call__(self, generated: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        return (
+            1.0 * self._mel_stft(generated, target)
+            + 0.1 * self._centroid(generated, target)
+            + 0.05 * self._mfcc(generated, target)
+        )
+
+
 class HybridLoss:
     """Weighted combination: 0.7 * STFT + 0.3 * MFCC."""
 
@@ -139,7 +213,7 @@ def get_loss(name: str):
     """Factory function returning a loss instance by name.
 
     Args:
-        name: One of "stft", "mfcc", "l1", "spectral", "hybrid"
+        name: One of "stft", "mfcc", "l1", "spectral", "hybrid", "mel_stft", "centroid", "matching"
 
     Returns:
         Loss instance with __call__(generated, target) -> scalar tensor
@@ -150,6 +224,9 @@ def get_loss(name: str):
         "l1": WaveformL1Loss,
         "spectral": SpectralFeatureLoss,
         "hybrid": HybridLoss,
+        "mel_stft": MelSTFTLoss,
+        "centroid": CentroidLoss,
+        "matching": MatchingLoss,
     }
     if name not in losses:
         raise ValueError(f"Unknown loss '{name}'. Valid options: {list(losses.keys())}")
