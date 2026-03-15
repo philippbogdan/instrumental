@@ -12,7 +12,7 @@ https://drive.google.com/file/d/1bIeXC0hk2hPyNghigaManP6mJDUll9YC/view?usp=share
 
 Given a sound from a song, INSTRUMENTAL recovers the synth settings that recreate it. Not just the notes, but the actual instrument.
 
-> Every DAW can tell you *what notes are playing*. None can tell you *what synth patch made that sound*. We solve the second problem.
+> Every DAW can tell you *what notes are playing*. We tackle the harder problem: *what synth patch made that sound*.
 
 ## Listen
 
@@ -141,22 +141,6 @@ python run_hypotheses.py
 # View the UI
 cd ui && python -m http.server 8080
 ```
-
-## What Makes This Novel
-
-We surveyed every major DAW and audio tool:
-
-| Tool | Extracts Notes | Identifies Instrument | Recovers Synth Params |
-|---|---|---|---|
-| Logic Pro | yes | no | no |
-| Ableton Live | yes | no | no |
-| Melodyne | yes | no | no |
-| Basic Pitch | yes | no | no |
-| MT3 / YourMT3+ | yes | yes (class only) | no |
-| Syntheon | no | no | yes (Vital only) |
-| **INSTRUMENTAL** | **yes** | **yes** | **yes** |
-
-No existing tool does all three.
 
 ## Research Paper
 

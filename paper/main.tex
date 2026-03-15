@@ -12,7 +12,8 @@
 \setlist{nosep,leftmargin=*}
 
 \title{\textsc{Instrumental}: Automatic Synthesizer Parameter\\Recovery from Audio via Evolutionary Optimization}
-\author{Philipp Bogdan}
+\usepackage{orcidlink}
+\author{Philipp Bogdan\;\orcidlink{0009-0009-7405-3555}}
 \date{}
 
 \begin{document}
@@ -20,7 +21,7 @@
 
 % ═══════════════ ABSTRACT ═══════════════
 \begin{abstract}
-\noindent Existing audio-to-MIDI tools extract notes but discard the timbral characteristics that define an instrument's identity. We present \textsc{Instrumental}, a system that recovers continuous synthesizer parameters from audio by coupling a differentiable 28-parameter subtractive synthesizer with CMA-ES, a derivative-free evolutionary optimizer. We optimize a composite perceptual loss combining mel-scaled STFT, spectral centroid, and MFCC divergence, achieving a matching loss of 2.09 on real recorded audio -- placing us in the top 0.13\% of the loss range. We systematically evaluate eight hypotheses for improving convergence and find that only parametric EQ boosting yields meaningful improvement. Our results show that CMA-ES outperforms gradient descent on this non-convex landscape, that more parameters do not monotonically improve matching, and that spectral-analysis initialization accelerates convergence over random starts.
+\noindent Existing audio-to-MIDI tools extract notes but discard the timbral characteristics that define an instrument's identity. We present \textsc{Instrumental}, a system that recovers continuous synthesizer parameters from audio by coupling a differentiable 28-parameter subtractive synthesizer with CMA-ES, a derivative-free evolutionary optimizer. We optimize a composite perceptual loss combining mel-scaled STFT, spectral centroid, and MFCC divergence, achieving a matching loss of 2.09 on real recorded audio. We systematically evaluate eight hypotheses for improving convergence and find that only parametric EQ boosting yields meaningful improvement. Our results show that CMA-ES outperforms gradient descent on this non-convex landscape, that more parameters do not monotonically improve matching, and that spectral-analysis initialization accelerates convergence over random starts.
 \end{abstract}
 
 % ═══════════════ INTRODUCTION ═══════════════
@@ -28,9 +29,9 @@
 
 Sound design is central to music production, yet recreating a sound heard in a recording remains laborious. Existing tools extract \emph{symbolic} information: source separators like Spleeter~\cite{hennequin2020spleeter} and Demucs~\cite{defossez2021hybrid} isolate stems; transcription models like MT3~\cite{gardner2022mt3} identify notes and instrument classes. These answer \emph{what notes are played} but not \emph{what synthesis parameters would reproduce this timbre}.
 
-We surveyed every major DAW (Logic Pro, Ableton Live, FL Studio) and standalone tool (Melodyne, Basic Pitch, AnthemScore). Without exception, they output MIDI notes only -- pitch, onset, duration, velocity. None attempts to recover the instrument that produced the sound. The gap between instrument \emph{classification} (``this is a synthesizer lead'') and instrument \emph{recreation} (``these are the filter cutoff, oscillator mix, and envelope settings'') remains unaddressed in production tools.
+Major DAWs (Logic Pro, Ableton Live, FL Studio) and standalone tools (Melodyne, Basic Pitch, AnthemScore) output MIDI notes only -- pitch, onset, duration, velocity. Research tools such as InverSynth~\cite{barkan2019inversynth}, Sound2Synth~\cite{chen2022sound2synth}, and Syntheon target parameter recovery for specific synthesizers (FM or Vital), but are trained on synthetic data and do not generalize across synth architectures. The gap between instrument \emph{classification} (``this is a synthesizer lead'') and instrument \emph{recreation} (``these are the filter cutoff, oscillator mix, and envelope settings'') remains largely open.
 
-Prior work on automatic synthesizer programming~\cite{barkan2019inversynth,chen2022sound2synth,hayes2024diffmoog} has tackled the inverse problem, but practical systems that accept arbitrary audio and return a playable patch remain elusive. We present \textsc{Instrumental}, a system that:
+Prior work on automatic synthesizer programming~\cite{barkan2019inversynth,chen2022sound2synth,hayes2024diffmoog,shin2025synthrl,hayes2025flowsynth} has tackled the inverse problem with neural networks and RL, typically targeting a single synthesizer architecture. We present \textsc{Instrumental}, a system that:
 \begin{enumerate}
 \item Provides an end-to-end pipeline from audio to playable synth patch;
 \item Systematically compares optimization strategies (CMA-ES, gradient descent, RL);
@@ -241,7 +242,7 @@ Fig.~\ref{fig:harmonics} reveals the source of this floor: upper harmonics (H4--
 
 \textbf{PPO reinforcement learning} (1M timesteps, 8 parallel environments, 69-dimensional observation space) learns to reduce loss from 4.16 to 2.31 in 50 steps -- matching CMA-ES -- but with 30 minutes of training versus CMA-ES's zero training cost. The reward signal ($\Delta$loss per step) remained at zero mean throughout training, indicating the need for better reward shaping.
 
-\textbf{Pretrained encoder} (Syntheon, a neural network trained on Vital synthesizer presets) achieved loss 322 -- 138$\times$ worse than CMA-ES. It was trained on a different distribution and synth architecture, confirming that pretrained models do not transfer to new synthesizers without retraining.
+\textbf{Pretrained encoder} (Syntheon, a neural network trained on Vital synthesizer presets) achieved loss 322 -- 138$\times$ worse than CMA-ES. This is expected: Syntheon was trained on Vital's architecture and parameter space, which differs from our custom synth. This result illustrates the cost of architecture mismatch, not a general limitation of neural approaches.
 
 % ═══════════════ DISCUSSION ═══════════════
 \section{Discussion}
