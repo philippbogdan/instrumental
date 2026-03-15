@@ -1,8 +1,13 @@
 # INSTRUMENTAL
+---
 
+Original sound:
+https://drive.google.com/file/d/15AEFooN2nJYRp53AskdhNJJ3ZVR4eLZI/view?usp=share_link
+
+Reconstructed sound:
 https://drive.google.com/file/d/1bIeXC0hk2hPyNghigaManP6mJDUll9YC/view?usp=share_link
 
-
+---
 **Automatic synthesizer parameter recovery from audio.**
 
 Given a sound from a song, INSTRUMENTAL recovers the synth settings that recreate it. Not just the notes, but the actual instrument.
