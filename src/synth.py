@@ -39,6 +39,10 @@ PARAM_DEFS = [
     ("filter_release", 0.001, 1.0),
     ("pulse_width", 0.1, 0.9),
     ("filter_slope", 4.0, 48.0),
+    ("eq1_freq", 500.0, 4500.0),
+    ("eq1_gain", -6.0, 6.0),
+    ("eq2_freq", 2000.0, 10000.0),
+    ("eq2_gain", -6.0, 6.0),
 ]
 
 
@@ -229,6 +233,18 @@ class SynthPatch:
         effective_cutoff = p["filter_cutoff"] * (1.0 + p["filter_env"] * (filter_env.mean() - 0.5))
         signal = _lowpass_filter(signal, effective_cutoff, p["filter_resonance"],
                                 slope=p["filter_slope"].item(), sr=self.sr)
+
+        # Parametric EQ — 2 peak bands that can BOOST frequencies
+        N = signal.shape[-1]
+        freqs = torch.fft.rfftfreq(N, d=1.0 / self.sr, device=signal.device)
+        X = torch.fft.rfft(signal)
+        for freq_key, gain_key in [("eq1_freq", "eq1_gain"), ("eq2_freq", "eq2_gain")]:
+            freq = p[freq_key]
+            gain = p[gain_key]
+            Q = 2.0
+            bell = (gain / 6.0) * torch.exp(-0.5 * ((freqs - freq) / (freq / Q + 1e-8)) ** 2)
+            X = X * (1.0 + bell)
+        signal = torch.fft.irfft(X, n=N)
 
         # Apply envelope + gain
         signal = signal * env * p["gain"]
