@@ -1,0 +1,56 @@
+\documentclass[11pt]{article}
+
+% Page geometry
+\usepackage[margin=1in]{geometry}
+
+% Math
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+
+% Tables and figures
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{subcaption}
+
+% Plotting
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{tikz}
+
+% References and links
+\usepackage[numbers]{natbib}
+\usepackage{hyperref}
+\usepackage{url}
+
+% Algorithms
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+% Misc
+\usepackage{xcolor}
+\usepackage{microtype}
+
+\title{INSTRUMENTAL: Automatic Synthesizer Parameter Recovery from Audio via Evolutionary Optimization}
+\author{Philipp Bogdan}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\input{abstract}
+\input{introduction}
+\input{related}
+\input{method}
+\input{experiments}
+\input{results}
+\input{figures}
+\input{discussion}
+\input{conclusion}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

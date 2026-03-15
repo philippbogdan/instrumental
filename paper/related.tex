@@ -1,0 +1,46 @@
+% related.tex
+\section{Related Work}
+
+\subsection{Audio Source Separation}
+
+Modern source separation systems decompose polyphonic mixtures into per-instrument stems, enabling downstream analysis of individual instruments.
+Spleeter~\cite{hennequin2020spleeter} popularized lightweight U-Net--based separation with pre-trained models for 2-, 4-, and 5-stem splits, while Hybrid Demucs~\cite{defossez2021hybrid} combines waveform and spectrogram branches in a hybrid architecture that achieves state-of-the-art separation quality.
+These systems extract isolated audio tracks but do not recover the synthesis parameters that produced them---they answer \emph{what} was played but not \emph{how} the sound was shaped.
+Our work takes the output of such separators as input: given an isolated instrument stem, we recover the synthesizer preset that reproduces it.
+
+\subsection{Automatic Music Transcription}
+
+Automatic music transcription (AMT) converts audio into symbolic representations such as MIDI.
+MT3~\cite{gardner2022mt3} formulates multi-instrument transcription as a sequence-to-sequence problem using a Transformer encoder--decoder, achieving strong results across diverse timbres.
+Basic Pitch provides a lightweight convolutional model for monophonic and polyphonic pitch estimation.
+These approaches extract \emph{note-level} information (pitch, onset, duration) but discard the timbral and parametric details of the sound source.
+In contrast, our method operates at the \emph{parameter level}: given audio of a single note or phrase, we recover the full set of synthesizer controls---oscillator mix, filter shape, envelope, and effects---that reproduce the timbre.
+
+\subsection{Automatic Synthesizer Programming}
+
+Recovering synthesizer parameters from audio is a long-standing challenge.
+InverSynth~\cite{barkan2019inversynth} trains a feed-forward neural network to predict FM synthesis parameters from spectrograms, demonstrating that direct regression can approximate the inverse mapping for a fixed synthesizer.
+Sound2Synth~\cite{chen2022sound2synth} extends this to a broader parameter space with a multi-task architecture that jointly predicts discrete and continuous parameters.
+DiffMoog~\cite{hayes2024diffmoog} builds a fully differentiable modular synthesizer and optimizes parameters via backpropagation through the signal chain, enabling gradient-based sound matching without a learned model.
+SynthRL~\cite{shin2025synthrl} formulates parameter recovery as a reinforcement learning problem, using a policy network to iteratively adjust parameters toward a target timbre.
+Yang et al.~\cite{yang2023whitebox} propose a white-box search approach that exploits the known structure of the synthesizer to constrain the search space.
+
+These methods each address different trade-offs between generality, accuracy, and computational cost.
+Neural approaches~\cite{barkan2019inversynth,chen2022sound2synth} require large paired datasets for training and are tied to the synthesizer used during data collection.
+Differentiable synthesis~\cite{hayes2024diffmoog} avoids dataset dependence but requires the entire signal chain to be differentiable and can become trapped in local minima of the non-convex loss landscape.
+Our approach combines the best of both worlds: we use CMA-ES---a derivative-free evolutionary optimizer---for global exploration, followed by gradient-based refinement through our differentiable synthesizer, avoiding both the dataset requirement and the local-minima problem.
+
+\subsection{Differentiable Audio Synthesis}
+
+Differentiable digital signal processing (DDSP)~\cite{engel2020ddsp} introduced the paradigm of embedding classical signal processing components---harmonic oscillators, filtered noise, reverb---as differentiable modules within neural network architectures, enabling end-to-end training with audio reconstruction losses.
+FlowSynth~\cite{yang2025flowsynth} extends this idea with normalizing flows to model the distribution of synthesizer parameters, allowing both parameter inference and diverse preset generation.
+Our synthesizer draws on the DDSP philosophy: all signal-chain components (oscillators, filters, ADSR envelopes, reverb) are implemented as differentiable PyTorch operations, making the entire rendering pipeline amenable to gradient-based optimization.
+However, unlike DDSP-based models that learn an encoder, we optimize parameters directly for each target sound via a hybrid evolutionary--gradient strategy.
+
+\subsection{Evolutionary Optimization for Audio}
+
+The Covariance Matrix Adaptation Evolution Strategy (CMA-ES)~\cite{hansen2016cmaes} is a state-of-the-art derivative-free optimizer for continuous, non-convex problems.
+It maintains a multivariate Gaussian search distribution and adapts both its mean and covariance matrix based on the ranking of candidate solutions, providing robust performance on multimodal landscapes without requiring gradient information.
+CMA-ES has been applied to sound matching and synthesizer programming tasks where the loss surface is highly non-convex due to the complex, often discontinuous relationship between synthesis parameters and perceptual audio similarity.
+Our system uses CMA-ES as the first stage of a two-stage pipeline: CMA-ES locates a promising basin in parameter space, after which Adam gradient descent exploits the differentiability of our synthesizer to refine the solution to high precision.
+This hybrid strategy addresses the complementary weaknesses of each approach---CMA-ES provides global exploration but converges slowly near optima, while gradient descent converges quickly but is sensitive to initialization.

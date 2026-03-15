@@ -1,0 +1,9 @@
+% abstract.tex
+\begin{abstract}
+Existing audio-to-MIDI tools recover discrete note events from recordings but discard the timbral characteristics that define an instrument's identity.
+We present \textsc{Instrumental}, a system that recovers continuous synthesizer parameters from audio by coupling a differentiable 28-parameter subtractive synthesizer with CMA-ES, a derivative-free evolutionary optimizer.
+The synthesizer implements a full subtractive signal chain---four oscillator types with unison voicing, a resonant low-pass filter with dedicated ADSR, two-band parametric EQ, and reverb---entirely in PyTorch.
+We optimize a composite perceptual loss combining mel-scaled multi-resolution STFT, spectral centroid distance, and MFCC divergence, achieving a matching loss of 2.09 on real recorded audio.
+We systematically evaluate eight hypotheses for improving convergence---including Chebyshev waveshaping, FM synthesis, alternative perceptual losses, and multi-start strategies---and find that only parametric EQ boosting yields meaningful improvement.
+Our results demonstrate that CMA-ES outperforms gradient descent on this non-convex landscape, that more parameters do not monotonically improve matching, and that spectral-analysis initialization accelerates convergence over random starts.
+\end{abstract}

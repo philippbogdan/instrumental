@@ -1,0 +1,144 @@
+% experiments.tex
+\section{Experiments}
+\label{sec:experiments}
+
+We evaluate INSTRUMENTAL through four axes: (1)~the target sound and evaluation protocol, (2)~an ablation study over the synthesizer parameter space, (3)~a suite of hypothesis tests probing alternative synthesis modules and loss functions, and (4)~a comparison of optimizers.
+All experiments use 44.1\,kHz audio on an Apple M4 Mini (10 CPU cores, 16\,GB unified memory) unless otherwise noted.
+
+%% ─────────────────────────────────────────────────
+\subsection{Target Sound and Evaluation Protocol}
+\label{sec:target-sound}
+
+The target is a lead synthesizer extracted from a commercial song.
+We isolate 22 individual notes at three pitches---$\text{A3}=221$\,Hz, $\text{C\#4}=278$\,Hz, and $\text{D4}=295$\,Hz---spanning approximately 3.2 seconds at ${\sim}100$\,BPM, with each note lasting ${\sim}150$\,ms.
+The notes are segmented using onset detection and pitch tracking via \texttt{librosa.pyin}.
+
+For optimization, we select a representative subset of three notes (one per pitch class) as fitting targets.
+The loss $\mathcal{L}$ averaged over these three notes serves as the primary metric throughout all experiments.
+We use the \emph{matching loss}---a weighted combination of perceptually-scaled multi-resolution STFT, spectral centroid distance, and MFCC distance:
+\begin{equation}
+  \mathcal{L}_{\text{match}} = 1.0 \cdot \mathcal{L}_{\text{MelSTFT}} + 0.1 \cdot \mathcal{L}_{\text{centroid}} + 0.05 \cdot \mathcal{L}_{\text{MFCC}}
+  \label{eq:matching-loss}
+\end{equation}
+where $\mathcal{L}_{\text{MelSTFT}}$ is a multi-resolution mel-scaled STFT loss with perceptual weighting (FFT sizes 1024, 2048, 8192), $\mathcal{L}_{\text{centroid}}$ is the normalized spectral centroid $L_1$ distance, and $\mathcal{L}_{\text{MFCC}}$ is the MSE over 13 MFCCs.
+Full-sequence evaluation renders all 21 notes with the recovered parameters and compares against the original via RMS-normalized waveform alignment.
+
+%% ─────────────────────────────────────────────────
+\subsection{Ablation Study: Synthesizer Parameterization}
+\label{sec:ablation}
+
+We incrementally expand the synthesizer's parameter space to determine the minimal representation that captures the target timbre.
+Each configuration is optimized with CMA-ES for 100K evaluations (population size~48, $\sigma_0 = 0.4$) using spectral initialization and 8-core CPU parallelism.
+
+\begin{table}[ht]
+\centering
+\caption{Ablation study over synthesizer parameter count. Loss is the matching loss averaged over three target notes (lower is better).}
+\label{tab:ablation}
+\begin{tabular}{@{}clcc@{}}
+\toprule
+\textbf{Params} & \textbf{Modules added} & \textbf{Loss} & \textbf{$\Delta$} \\
+\midrule
+15 & Osc.\ mix, filter, ADSR, reverb & 4.60 & --- \\
+18 & + unison voices/spread, noise floor & 2.34 & $-49.1\%$ \\
+24 & + pulse width, filter ADSR, filter slope & 2.13 & $-9.0\%$ \\
+28 & + 2-band parametric EQ & 2.09 & $-1.9\%$ \\
+29 & + distortion, delay, vibrato (unconstrained) & \multicolumn{2}{c}{\emph{diverged}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The largest improvement comes from adding unison and noise floor (15$\to$18 params, $-49\%$), which allows the optimizer to model the characteristic ``thickness'' of the target.
+Adding pulse width and a dedicated filter envelope (18$\to$24) yields a further 9\% reduction.
+The 2-band parametric EQ (24$\to$28) provides a modest additional gain.
+
+At 29 parameters, including unconstrained distortion drive, delay feedback, and vibrato depth, the search \emph{diverged}: CMA-ES exploited the extended parameter ranges, converging to physically implausible configurations with extreme delay feedback and distortion.
+This motivated constraining the parameter space to 24 core synthesis parameters plus 4 post-EQ parameters (28 total), which we adopt as our final configuration.
+
+%% ─────────────────────────────────────────────────
+\subsection{Hypothesis Testing}
+\label{sec:hypotheses}
+
+We test eight hypotheses about alternative synthesis modules, loss functions, and optimization strategies.
+Each test modifies one component while holding all others fixed.
+All tests use CMA-ES with a budget of 10K evaluations (population size~20, $\sigma_0 = 0.15$), initialized from the best 24-parameter solution (v24, baseline loss $= 2.13$).
+Table~\ref{tab:hypotheses} summarizes the results.
+
+\begin{table}[ht]
+\centering
+\caption{Hypothesis tests. Each row modifies one component relative to the v24 baseline ($\mathcal{L} = 2.13$). Positive $\Delta$ means worse; negative means better. All tests use 10K CMA-ES evaluations.}
+\label{tab:hypotheses}
+\begin{tabular}{@{}llccc@{}}
+\toprule
+\textbf{ID} & \textbf{Hypothesis} & \textbf{Extra params} & \textbf{Loss} & \textbf{$\Delta$} \\
+\midrule
+A & Chebyshev waveshaping (5-coeff.) & +5 & 2.75 & $+29\%$ \\
+B & 2-band parametric EQ & +4 & 1.96 & $-8\%$ \\
+C & TFS / envelope loss & 0 & 2.49 & $+17\%$ \\
+D & CDPAM perceptual loss & 0 & \multicolumn{2}{c}{\emph{skipped}\footnotemark} \\
+E & SPSA fine-tuning (5K CMA + 5K SPSA) & 0 & 2.36 & $+11\%$ \\
+F & CLAP embedding loss & 0 & 0.095\textsuperscript{*} & --- \\
+G & Multi-start CMA-ES ($8 \times 1.25$K) & 0 & 2.75 & $+29\%$ \\
+H & FM synthesis (carrier + modulator) & +2 & 2.49 & $+17\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+\footnotetext{CDPAM skipped due to unresolved dependency conflict at experiment time.}
+
+\noindent\textsuperscript{*}CLAP loss converged in its own metric space (cosine distance 0.095) but the resulting audio had perceptually different quality from the spectral-loss solution, as CLAP embeddings capture high-level semantic similarity rather than fine spectral detail.
+
+\paragraph{Key findings.}
+\begin{itemize}
+  \item \textbf{Parametric EQ (B)} is the only modification that \emph{improves} on the baseline ($-8\%$), confirming that post-synthesis spectral shaping captures residual timbral detail the core oscillator-filter chain cannot model. This result motivated its inclusion in the final 28-parameter configuration (Section~\ref{sec:ablation}).
+  \item \textbf{Chebyshev waveshaping (A)} and \textbf{FM synthesis (H)} increase loss by 29\% and 17\%, respectively. Both add harmonic complexity that the 10K-evaluation budget cannot adequately explore, suggesting these modules require either a larger search budget or a reduced base parameter set to be effective.
+  \item \textbf{TFS/envelope loss (C)} adds an RMS-envelope trajectory term to the matching loss. The resulting parameters score 17\% worse under the standard loss, indicating that the envelope term distorts the spectral optimization landscape.
+  \item \textbf{SPSA fine-tuning (E)} splits the budget into 5K CMA-ES + 5K SPSA gradient steps. The two-phase approach performs 11\% worse, likely because SPSA's noisy gradient estimates are too imprecise in the 24-dimensional space to improve on CMA-ES alone at this budget.
+  \item \textbf{Multi-start CMA-ES (G)} distributes the same 10K budget across 8 independent restarts ($8 \times 1.25$K each). This performs 29\% worse, confirming that with a warm-start initialization the landscape is unimodal enough that concentrating the full budget on a single run is preferable.
+  \item \textbf{CLAP loss (F)} converges rapidly but in a different quality regime---the CLAP embedding space captures ``sounds like a synthesizer'' rather than ``has the same spectral envelope,'' making it unsuitable as a drop-in replacement for spectral losses in parameter recovery tasks.
+\end{itemize}
+
+%% ─────────────────────────────────────────────────
+\subsection{Optimizer Comparison}
+\label{sec:optimizer-comparison}
+
+We compare three optimization approaches on the 24-parameter synthesizer with matching loss.
+
+\paragraph{CMA-ES.}
+Our primary optimizer. Population size 48--80, spectral initialization, 100K evaluations.
+CMA-ES converges to loss ${\approx}\,2.09$ (28 params) and ${\approx}\,2.13$ (24 params), consistently finding high-quality solutions across runs.
+
+\paragraph{Adam (gradient descent).}
+We use Adam with cosine-annealing learning rate ($\text{lr}_0 = 0.02$, $\eta_{\min} = 0.001$) and gradient noise injection for exploration, running for 500 steps with the differentiable synthesizer.
+Adam plateaus at a higher loss than CMA-ES on the real-audio target: the multi-resolution STFT landscape contains many shallow local minima that trap gradient-based search.
+On \emph{synthetic} targets (Level~0: known ground truth), Adam converges reliably to loss $< 0.01$ in under 500 steps, confirming that the synth and loss are fully differentiable---the difficulty lies in the real-audio matching landscape, not the optimization machinery.
+
+\paragraph{RL--PPO.}
+A PPO agent (2-layer MLP, 256 units, 8 parallel environments) trained for 1M timesteps learns to adjust 18 synth parameters over 50-step episodes.
+The state space comprises current parameters (18-dim), target audio features (17-dim MFCC + centroid + rolloff + flatness + RMS), current audio features, and their difference (total: 69-dim).
+Actions are continuous adjustments in $[-0.1, +0.1]$ per parameter.
+The agent matches CMA-ES quality on synthetic targets but does not surpass it on real audio, and requires hours of training versus seconds for CMA-ES inference.
+The RL approach demonstrates that sound matching \emph{can} be framed as sequential decision-making, but the current reward signal (loss improvement per step) provides insufficient shaping for the agent to learn fine spectral adjustments.
+
+\paragraph{Summary.}
+CMA-ES with warm-start initialization remains the best approach for single-target parameter recovery: it handles the non-convex landscape without requiring gradients, scales adequately to 24--28 parameters, and produces the lowest loss among all tested optimizers.
+
+%% ─────────────────────────────────────────────────
+\subsection{Compute Performance}
+\label{sec:compute}
+
+Throughput is critical for evolutionary search: CMA-ES evaluates thousands of candidates per generation.
+We benchmark two implementation strategies.
+
+\paragraph{Batched CPU synthesis.}
+The GPU-style batched synthesizer (\texttt{SynthPatchGPU}) processes an entire CMA-ES population ($B = 80$ candidates) in a single batched forward pass, with all oscillator, filter, and envelope computations expressed as $(B, N)$ tensor operations.
+On the M4 Mini (10 CPU cores), this achieves \textbf{553 evaluations per second}, rendering 80 candidate waveforms of ${\sim}150$\,ms each in one pass.
+
+\paragraph{Multi-process CPU synthesis.}
+An alternative 8-process \texttt{multiprocessing.Pool} implementation renders each candidate independently using the single-candidate synthesizer.
+On the same M4 Mini hardware this achieves ${\sim}200$ evaluations per second---$2.8\times$ slower than the batched approach due to inter-process communication overhead and the inability to share FFT plans across workers.
+
+\paragraph{Cloud comparison.}
+We also benchmark on an Azure Standard\_D48s\_v5 VM (48 vCPU, Intel Xeon Platinum 8370C).
+With 48-way multiprocessing the cloud VM achieves ${\sim}220$ evaluations per second.
+The M4 Mini's unified memory architecture and high single-core performance deliver ${\approx}2.5\times$ higher per-core throughput than the cloud VM, making consumer Apple Silicon competitive with datacenter hardware for this workload.
+
+A complete 100K-evaluation CMA-ES run takes approximately 3 minutes on the M4 Mini with the batched synthesizer.

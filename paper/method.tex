@@ -1,0 +1,120 @@
+% method.tex
+\section{Method}
+\label{sec:method}
+
+We present a pipeline for automatic synthesizer parameter recovery that transforms a recorded audio excerpt into a playable synthesizer patch. Given an input audio signal, our system isolates the target instrument via source separation, detects pitch and note boundaries, then searches for the parameters of a differentiable subtractive synthesizer that best reproduce the timbral characteristics of the source. The pipeline operates in four stages: source separation, pitch analysis and note segmentation, spectral initialization, and evolutionary parameter optimization.
+
+\subsection{Pipeline Overview}
+\label{sec:pipeline}
+
+The full pipeline proceeds as follows:
+
+\begin{enumerate}
+    \item \textbf{Source separation.} The input mixture is processed by Demucs~\citep{defossez2021hybrid} to isolate the target instrument stem. This yields a clean mono signal at 44.1\,kHz.
+    \item \textbf{Pitch detection and note segmentation.} We apply TorchCrepe~\citep{kim2018crepe} to extract frame-level fundamental frequency ($f_0$) estimates, then segment the voiced regions into discrete notes with onset times, durations, and median $f_0$ values.
+    \item \textbf{Spectral initialization.} Spectral features of the target audio are analyzed to produce an informed starting point for optimization (Section~\ref{sec:spectral_init}).
+    \item \textbf{Parameter optimization.} CMA-ES~\citep{hansen2016cmaes} searches the 28-dimensional parameter space using the spectrally initialized starting point, optimizing a perceptual loss across multiple pitches simultaneously (Sections~\ref{sec:loss}--\ref{sec:optimization}).
+\end{enumerate}
+
+The output is a single parameter vector $\mathbf{p} \in [0, 1]^{28}$ that can render any note in the instrument's range through the synthesizer.
+
+\subsection{Differentiable Subtractive Synthesizer}
+\label{sec:synth}
+
+We implement a subtractive synthesizer entirely in PyTorch, ensuring that every operation in the signal chain is differentiable with respect to the 28 normalized parameters. The signal chain is:
+
+\[
+\text{Oscillators} \;\rightarrow\; \text{Mixer} \;\rightarrow\; \text{Low-Pass Filter} \;\rightarrow\; \text{Parametric EQ} \;\rightarrow\; \text{Amplifier} \;\rightarrow\; \text{Reverb}
+\]
+
+\paragraph{Oscillators.} The synthesizer provides four waveform generators: sawtooth, pulse (with variable duty cycle), sine, and noise. Each waveform is mixed according to learned weights (\texttt{saw\_mix}, \texttt{square\_mix}, \texttt{sine\_mix}, \texttt{noise\_mix}). The pulse waveform uses a differentiable approximation via $\tanh(20 \cdot (\sin(\phi) - \sin(\phi_w)))$, where $\phi_w = w \cdot 2\pi$ and $w$ is the pulse width parameter. Similarly, the sawtooth is computed as $2(\phi / 2\pi) - 1$.
+
+\paragraph{Unison.} Up to 7 voices are generated per waveform, each detuned by an offset determined by the \texttt{unison\_spread} parameter. Voice $i$ of $V$ total voices has frequency ratio $r_i = 2^{(d + s \cdot o_i)/12}$, where $d$ is the global detune in semitones, $s$ is the spread, and $o_i = 2i/(V-1) - 1$ distributes voices symmetrically. The outputs are averaged across voices.
+
+\paragraph{Low-pass filter.} Rather than using biquad coefficients (which introduce discontinuous gradients), we implement a frequency-domain filter with a sigmoid-shaped magnitude response:
+\begin{equation}
+    H(f) = \sigma\!\left(-\alpha \left(\frac{f}{f_c} - 1\right)\right) + Q \cdot 2 \exp\!\left(-\frac{1}{2}\left(\frac{f/f_c - 1}{0.15}\right)^{\!2}\right)
+    \label{eq:filter}
+\end{equation}
+where $f_c$ is the cutoff frequency, $\alpha$ is the filter slope (ranging from 4 to 48\,dB/oct), $Q$ is the resonance amount, and $\sigma$ denotes the sigmoid function. The second term adds a Gaussian resonance peak centered at the cutoff. Filtering is applied by pointwise multiplication in the frequency domain: $Y(f) = X(f) \cdot H(f)$.
+
+\paragraph{Filter envelope.} A dedicated ADSR envelope modulates the filter cutoff over time. The effective cutoff is:
+\begin{equation}
+    f_c^{\text{eff}} = f_c \cdot \left(1 + m \cdot (\bar{e}_{\text{filt}} - 0.5)\right)
+\end{equation}
+where $m \in [-1, 1]$ is the filter envelope amount and $\bar{e}_{\text{filt}}$ is the mean of the filter ADSR envelope. The mean is used because the FFT-based filter applies a single frequency response to the entire signal.
+
+\paragraph{Parametric EQ.} Two peak bands allow frequency-selective boosting or cutting. Each band applies a Gaussian bell curve in the frequency domain:
+\begin{equation}
+    X'(f) = X(f) \cdot \left(1 + \frac{g}{6} \exp\!\left(-\frac{1}{2}\left(\frac{f - f_{\text{eq}}}{f_{\text{eq}} / Q_{\text{eq}}}\right)^{\!2}\right)\right)
+\end{equation}
+where $f_{\text{eq}}$ is the center frequency, $g \in [-6, 6]$\,dB is the gain, and $Q_{\text{eq}} = 2.0$.
+
+\paragraph{Amplitude envelope.} The ADSR envelope shapes the amplitude over time. Given attack time $a$, decay time $d$, sustain level $s$, and release time $r$, the envelope is defined piecewise:
+\begin{equation}
+    e(t) = \begin{cases}
+        t / a & \text{if } t < a \\[4pt]
+        1 - (1 - s) \cdot \dfrac{t - a}{d} & \text{if } a \le t < a + d \\[6pt]
+        s & \text{if } a + d \le t < t_{\text{off}} \\[4pt]
+        e(t_{\text{off}}) \cdot \left(1 - \dfrac{t - t_{\text{off}}}{r}\right) & \text{if } t \ge t_{\text{off}}
+    \end{cases}
+    \label{eq:adsr}
+\end{equation}
+where $t_{\text{off}}$ is the note-off time. All transitions are clamped to $[0, 1]$, making the envelope piecewise linear and fully differentiable almost everywhere.
+
+\paragraph{Reverb.} A simple multi-tap delay reverb uses six delay lines at multiples of $0.1 \cdot r_s \cdot f_s$ samples, where $r_s \in [0.01, 0.99]$ is the room size and $f_s$ is the sample rate. Each tap decays as $r_s^{i+1}$. The wet signal is normalized and blended with the dry signal according to a mix parameter.
+
+\paragraph{Summary of parameters.} The 28 parameters span oscillator mix (4), pitch detune (1), filter (cutoff, resonance, slope, envelope amount: 4), amplitude ADSR (4), filter ADSR (4), pulse width (1), EQ (4: two bands $\times$ frequency and gain), unison (voices, spread: 2), noise floor (1), reverb (size, mix: 2), and output gain (1).
+
+\subsection{Loss Function}
+\label{sec:loss}
+
+We define a composite perceptual loss $\mathcal{L}_{\text{match}}$ that captures timbral similarity at multiple scales:
+
+\begin{equation}
+    \mathcal{L}_{\text{match}}(\hat{x}, x) \;=\; \mathcal{L}_{\text{mel}}(\hat{x}, x) \;+\; 0.1 \cdot \mathcal{L}_{\text{cent}}(\hat{x}, x) \;+\; 0.05 \cdot \mathcal{L}_{\text{mfcc}}(\hat{x}, x)
+    \label{eq:loss}
+\end{equation}
+
+where $\hat{x}$ is the synthesized audio and $x$ is the target.
+
+\paragraph{Mel-scaled multi-resolution STFT loss.} $\mathcal{L}_{\text{mel}}$ computes spectral convergence and log-magnitude L1 distance on mel-scaled spectrograms at three resolutions (FFT sizes 1024, 2048, and 8192 with corresponding hop sizes 256, 512, and 2048). Mel scaling with 128 bins at 44.1\,kHz and A-weighting perceptual weighting are applied via auraloss~\citep{steinmetz2020auraloss}. This term captures the overall spectral shape and is the dominant component of the loss.
+
+\paragraph{Spectral centroid loss.} $\mathcal{L}_{\text{cent}}$ measures the L1 distance between the mean spectral centroids of $\hat{x}$ and $x$, normalized by the Nyquist frequency. This explicitly penalizes brightness mismatch:
+\begin{equation}
+    \mathcal{L}_{\text{cent}} = \frac{1}{f_s / 2} \left| \bar{C}(\hat{x}) - \bar{C}(x) \right|, \qquad C(x) = \frac{\sum_k k \cdot |X_k|}{\sum_k |X_k|}
+\end{equation}
+where $X_k$ is the STFT magnitude at frequency bin $k$.
+
+\paragraph{MFCC loss.} $\mathcal{L}_{\text{mfcc}}$ is the mean squared error between 13-dimensional MFCC features extracted with a 1024-point FFT, 256-sample hop, and 40 mel bands. This term captures timbral texture in a compact, perceptually motivated representation.
+
+\subsection{Optimization}
+\label{sec:optimization}
+
+\paragraph{Spectral initialization.} Rather than starting from a random or center-valued parameter vector, we analyze the target audio to produce an informed initialization. The spectral initialization procedure extracts:
+\begin{itemize}
+    \item \textbf{Filter cutoff}: from the 85th-percentile spectral rolloff, mapped to the filter cutoff range $[200, 16000]$\,Hz.
+    \item \textbf{Waveform type}: from harmonic energy analysis. We measure the energy ratio of even to odd harmonics (excluding the fundamental): a high ratio suggests sawtooth-like spectrum (all harmonics present), a low ratio suggests square-like spectrum (odd harmonics dominant), and fundamental dominance above 85\% suggests a sine wave.
+    \item \textbf{Noise level}: from spectral flatness, which distinguishes tonal from noisy signals.
+    \item \textbf{Attack time}: from the time-to-peak of the RMS envelope.
+    \item \textbf{Gain}: from mean RMS amplitude.
+\end{itemize}
+Remaining parameters (decay, sustain, release, reverb, EQ) are set to moderate defaults. This initialization provides a starting point that is typically within the correct region of the search space, reducing the number of evaluations needed for convergence.
+
+\paragraph{CMA-ES optimization.} We employ CMA-ES (Covariance Matrix Adaptation Evolution Strategy)~\citep{hansen2016cmaes} as the primary optimizer. CMA-ES is a gradient-free evolutionary strategy that maintains a multivariate Gaussian distribution over the search space, adapting both the mean and the full covariance matrix based on the ranking of candidate solutions. This makes it well-suited to the multimodal, non-convex landscape of audio synthesis matching, where gradient-based methods can become trapped in local minima.
+
+The search is configured with population size $\lambda = 40$, initial step size $\sigma_0 = 0.15$, and a budget of $10^5$ function evaluations. The search space is bounded to $[0, 1]^{28}$. Each candidate evaluation renders the synthesizer at all target pitches and computes the sum of $\mathcal{L}_{\text{match}}$ across notes.
+
+For computational efficiency, we implement a fully batched GPU synthesizer (\texttt{SynthPatchGPU}) that renders an entire population of $\lambda$ candidates simultaneously using batched tensor operations. All oscillator generation, filtering, envelope computation, and reverb are expressed as operations on $(B, N)$ tensors, where $B = \lambda$ is the batch dimension and $N$ is the number of audio samples. This eliminates Python-level loops over candidates, achieving throughputs exceeding 1000 evaluations per second on consumer hardware.
+
+\subsection{Multi-Pitch Fitting}
+\label{sec:multipitch}
+
+A key design decision is that we optimize a single parameter vector $\mathbf{p}$ to match the target timbre across multiple pitches simultaneously. From the segmented notes, we select three representative notes spanning the pitch range of the excerpt. In our experiments, these correspond to A3 (221\,Hz), C$\sharp$4 (278\,Hz), and D4 (295\,Hz).
+
+The total loss for a candidate $\mathbf{p}$ is:
+\begin{equation}
+    \mathcal{L}_{\text{total}}(\mathbf{p}) = \frac{1}{K} \sum_{k=1}^{K} \mathcal{L}_{\text{match}}\!\left(\text{render}(\mathbf{p}, f_0^{(k)}),\; x^{(k)}\right)
+    \label{eq:multipitch}
+\end{equation}
+where $K = 3$ is the number of target notes, $f_0^{(k)}$ is the fundamental frequency of the $k$-th note, and $x^{(k)}$ is the corresponding target audio segment. This multi-pitch objective prevents the optimizer from overfitting to a single note and encourages the recovered patch to generalize across the instrument's range. The same patch can then render the full note sequence at arbitrary pitches and durations.

@@ -1,0 +1,52 @@
+% results.tex
+\section{Results}
+\label{sec:results}
+
+\subsection{Optimization Progression}
+
+Table~\ref{tab:progression} summarizes the iterative development of our synthesizer and optimization pipeline across 24 versions.
+Early versions (v1--v6) established the core loop: a 15-parameter subtractive synthesizer optimized with CMA-ES under multi-resolution STFT loss.
+Introducing spectral initialization and switching to mel-scaled perceptually-weighted STFT loss (v6) yielded the first major improvement.
+Scaling from 3{,}000 to 50{,}000 evaluations with 8-core parallelism (v11) produced the best result for the base architecture, achieving a matching loss of 2.27.
+Subsequent architectural changes---adding unison voices, filter envelope ADSR, pulse width modulation, and variable filter slope---expanded the parameter space to 24 dimensions (v24, loss 2.13) but produced diminishing returns.
+
+The most significant single improvement came from adding a 2-band parametric equalizer capable of \emph{boosting} frequencies (v24+EQ, loss 2.09), reducing loss by 8\% relative to v24.
+This result is notable because the subtractive synthesizer's low-pass filter can only \emph{attenuate} frequencies above the cutoff; it cannot add energy at specific frequency bands.
+The parametric EQ, with its Gaussian bell curves in the frequency domain, filled this expressivity gap.
+The best EQ configuration placed a $+1$\,dB boost at 5.8\,kHz, compensating for high-frequency content present in the target that the low-pass filter inherently suppresses.
+
+\subsection{Hypothesis Testing}
+
+We evaluated eight modifications against the v24 baseline (loss 2.13) using 10{,}000 CMA-ES evaluations each.
+Results are presented in Table~\ref{tab:hypotheses}.
+Of the eight tests, only the parametric EQ (Test~B) improved the matching loss.
+The remaining seven modifications either matched or worsened performance:
+
+\begin{itemize}
+    \item \textbf{Chebyshev waveshaping} (Test~A, 5 extra params) added polynomial harmonics to the sine oscillator but could not improve over the saw/square mixture already present in the base synth.
+    \item \textbf{TFS/envelope loss} (Test~C) augmented the matching loss with an RMS envelope trajectory term, penalizing temporal dynamics mismatches. This changed what the optimizer targeted but did not reduce the standard matching loss.
+    \item \textbf{CDPAM perceptual loss} (Test~D) replaced the spectral loss with a learned perceptual distance metric. While CDPAM captures human-like similarity judgments, its coarse gradient signal proved less effective for fine parameter tuning than the multi-resolution spectral loss.
+    \item \textbf{SPSA fine-tuning} (Test~E) applied 5{,}000 simultaneous perturbation stochastic approximation steps after 5{,}000 CMA-ES evaluations. The gradient estimates were too noisy in 24 dimensions to improve on CMA-ES alone.
+    \item \textbf{CLAP embedding loss} (Test~F) optimized cosine distance in a pretrained audio embedding space. The embedding was too coarse-grained to distinguish subtle timbral differences at this loss scale.
+    \item \textbf{Multi-start CMA-ES} (Test~G, 8 independent runs of 1{,}250 evaluations) explored whether the landscape contains better basins. Results matched the single-run baseline, suggesting that 10{,}000 evaluations from a warm start already finds a near-global optimum.
+    \item \textbf{FM synthesis} (Test~H, 2 extra params) added a frequency modulation component but the optimizer drove the modulation index toward zero, effectively disabling it.
+\end{itemize}
+
+\subsection{Convergence Behavior}
+
+Figure~\ref{fig:convergence} shows the loss trajectory across 100{,}000 CMA-ES evaluations for the 24-parameter synth (v24).
+Approximately 90\% of the total loss reduction occurs within the first 10{,}000 evaluations.
+The remaining 90{,}000 evaluations contribute only marginal improvements, with the loss curve flattening after roughly 20{,}000 evaluations.
+This rapid initial convergence followed by diminishing returns suggests that the optimizer quickly locates the correct basin of attraction but struggles to make fine adjustments within it---consistent with the known behavior of CMA-ES in low-dimensional spaces where the covariance matrix adapts efficiently to the local landscape geometry.
+
+Scaling the evaluation budget from 50{,}000 (v11) to 500{,}000 (v14) on GPU yielded no measurable improvement, confirming that additional compute cannot compensate for architectural limitations in the synthesizer's expressivity.
+
+\subsection{Spectral Analysis}
+
+The spectral centroid of the best match (v24+EQ) differed from the target by 133\,Hz, indicating that the synthesized output has a slightly different brightness profile than the original recording.
+This residual gap is attributable to the static nature of our synthesizer: while the original instrument exhibits time-varying harmonics (visible in the spectrogram as modulated overtone amplitudes across the note duration), our synthesizer produces a fixed harmonic spectrum modulated only by amplitude and filter envelopes.
+
+Harmonic analysis of the target audio (Figure~\ref{fig:harmonics}) reveals that the third harmonic (H3) carries more energy than the second harmonic (H2)---a profile characteristic of the original instrument's resonance structure.
+Our synthesizer, built from standard sawtooth and square waveforms, produces a harmonic series where energy decreases monotonically ($1/n$ for sawtooth, $1/n$ for odd harmonics in square).
+The optimizer compensates by mixing saw and square waveforms and adjusting the filter cutoff, but cannot precisely replicate the non-monotonic harmonic envelope of the target.
+This mismatch between the fixed harmonic template of standard waveforms and the target's resonance-shaped spectrum represents a fundamental expressivity ceiling of the subtractive synthesis architecture.
