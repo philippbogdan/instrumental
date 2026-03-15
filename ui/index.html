@@ -866,15 +866,27 @@ function updateStatus(text, color) {
 // ─── TRY LOADING LOCAL FILES ───
 async function tryLoadLocalFiles() {
   try {
-    originalBuffer = await loadAudio('../target.wav');
+    originalBuffer = await loadAudio('original.mp3');
     drawWaveform(document.getElementById('waveOriginal'), originalBuffer.getChannelData(0), '#00d4ff');
-    document.querySelector('.file-drop-text').textContent = '✓ target.wav loaded';
-  } catch(e) {}
+    document.querySelector('.file-drop-text').textContent = '✓ original.mp3 loaded';
+    updateStatus('Loaded', 'green');
+  } catch(e) {
+    try {
+      originalBuffer = await loadAudio('../target.wav');
+      drawWaveform(document.getElementById('waveOriginal'), originalBuffer.getChannelData(0), '#00d4ff');
+      document.querySelector('.file-drop-text').textContent = '✓ target.wav loaded';
+    } catch(e2) {}
+  }
 
   try {
-    matchedBuffer = await loadAudio('../output/matched_v11_50k.wav');
+    matchedBuffer = await loadAudio('matched.mp3');
     drawWaveform(document.getElementById('waveMatched'), matchedBuffer.getChannelData(0), '#ffaa00');
-  } catch(e) {}
+  } catch(e) {
+    try {
+      matchedBuffer = await loadAudio('../output/matched_v11_50k.wav');
+      drawWaveform(document.getElementById('waveMatched'), matchedBuffer.getChannelData(0), '#ffaa00');
+    } catch(e2) {}
+  }
 }
 
 // ─── INIT ───
