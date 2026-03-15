@@ -8,7 +8,7 @@ Table~\ref{tab:progression} summarizes the iterative development of our synthesi
 Early versions (v1--v6) established the core loop: a 15-parameter subtractive synthesizer optimized with CMA-ES under multi-resolution STFT loss.
 Introducing spectral initialization and switching to mel-scaled perceptually-weighted STFT loss (v6) yielded the first major improvement.
 Scaling from 3{,}000 to 50{,}000 evaluations with 8-core parallelism (v11) produced the best result for the base architecture, achieving a matching loss of 2.27.
-Subsequent architectural changes---adding unison voices, filter envelope ADSR, pulse width modulation, and variable filter slope---expanded the parameter space to 24 dimensions (v24, loss 2.13) but produced diminishing returns.
+Subsequent architectural changes -- adding unison voices, filter envelope ADSR, pulse width modulation, and variable filter slope -- expanded the parameter space to 24 dimensions (v24, loss 2.13) but produced diminishing returns.
 
 The most significant single improvement came from adding a 2-band parametric equalizer capable of \emph{boosting} frequencies (v24+EQ, loss 2.09), reducing loss by 8\% relative to v24.
 This result is notable because the subtractive synthesizer's low-pass filter can only \emph{attenuate} frequencies above the cutoff; it cannot add energy at specific frequency bands.
@@ -37,7 +37,7 @@ The remaining seven modifications either matched or worsened performance:
 Figure~\ref{fig:convergence} shows the loss trajectory across 100{,}000 CMA-ES evaluations for the 24-parameter synth (v24).
 Approximately 90\% of the total loss reduction occurs within the first 10{,}000 evaluations.
 The remaining 90{,}000 evaluations contribute only marginal improvements, with the loss curve flattening after roughly 20{,}000 evaluations.
-This rapid initial convergence followed by diminishing returns suggests that the optimizer quickly locates the correct basin of attraction but struggles to make fine adjustments within it---consistent with the known behavior of CMA-ES in low-dimensional spaces where the covariance matrix adapts efficiently to the local landscape geometry.
+This rapid initial convergence followed by diminishing returns suggests that the optimizer quickly locates the correct basin of attraction but struggles to make fine adjustments within it -- consistent with the known behavior of CMA-ES in low-dimensional spaces where the covariance matrix adapts efficiently to the local landscape geometry.
 
 Scaling the evaluation budget from 50{,}000 (v11) to 500{,}000 (v14) on GPU yielded no measurable improvement, confirming that additional compute cannot compensate for architectural limitations in the synthesizer's expressivity.
 
@@ -46,7 +46,7 @@ Scaling the evaluation budget from 50{,}000 (v11) to 500{,}000 (v14) on GPU yiel
 The spectral centroid of the best match (v24+EQ) differed from the target by 133\,Hz, indicating that the synthesized output has a slightly different brightness profile than the original recording.
 This residual gap is attributable to the static nature of our synthesizer: while the original instrument exhibits time-varying harmonics (visible in the spectrogram as modulated overtone amplitudes across the note duration), our synthesizer produces a fixed harmonic spectrum modulated only by amplitude and filter envelopes.
 
-Harmonic analysis of the target audio (Figure~\ref{fig:harmonics}) reveals that the third harmonic (H3) carries more energy than the second harmonic (H2)---a profile characteristic of the original instrument's resonance structure.
+Harmonic analysis of the target audio (Figure~\ref{fig:harmonics}) reveals that the third harmonic (H3) carries more energy than the second harmonic (H2) -- a profile characteristic of the original instrument's resonance structure.
 Our synthesizer, built from standard sawtooth and square waveforms, produces a harmonic series where energy decreases monotonically ($1/n$ for sawtooth, $1/n$ for odd harmonics in square).
 The optimizer compensates by mixing saw and square waveforms and adjusting the filter cutoff, but cannot precisely replicate the non-monotonic harmonic envelope of the target.
 This mismatch between the fixed harmonic template of standard waveforms and the target's resonance-shaped spectrum represents a fundamental expressivity ceiling of the subtractive synthesis architecture.

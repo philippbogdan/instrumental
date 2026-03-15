@@ -5,12 +5,12 @@
 \subsection{Why Parametric EQ Improves Matching}
 
 A subtractive synthesizer can only \emph{remove} spectral energy: the low-pass filter attenuates frequencies above its cutoff, but no component in the basic signal chain can add energy to a frequency band that the oscillators did not produce.
-When the target sound contains a prominent presence peak in the 1--5\,kHz range---as our violin target does---the optimizer has no mechanism to reproduce it with oscillator mix and filter parameters alone.
+When the target sound contains a prominent presence peak in the 1--5\,kHz range -- as our violin target does -- the optimizer has no mechanism to reproduce it with oscillator mix and filter parameters alone.
 
 Adding a two-band parametric equalizer resolves this asymmetry.
 With just four extra parameters (center frequency and gain for each band), the EQ can \emph{boost} specific frequency regions after filtering.
 In our experiments, CMA-ES converged on a +1\,dB boost near 5.8\,kHz, yielding an 8\% reduction in matching loss compared to the EQ-free baseline.
-This result is notable because it came from the smallest parameter extension we tested (4 parameters), yet produced the largest improvement---confirming that \emph{targeted, physically motivated} additions to the signal chain outperform brute-force parameter expansion.
+This result is notable because it came from the smallest parameter extension we tested (4 parameters), yet produced the largest improvement -- confirming that \emph{targeted, physically motivated} additions to the signal chain outperform brute-force parameter expansion.
 
 \subsection{Why More Parameters Hurt}
 
@@ -33,7 +33,7 @@ However, it is \emph{impossible} to reproduce $H_3 > H_2$ with standard subtract
 \end{itemize}
 
 This harmonic ordering represents a hard floor for our subtractive architecture.
-We tested three extensions designed to break through it---Chebyshev waveshaping (Test~A), FM synthesis (Test~H), and additive harmonic multipliers---but none improved the matching loss within 10K evaluations.
+We tested three extensions designed to break through it -- Chebyshev waveshaping (Test~A), FM synthesis (Test~H), and additive harmonic multipliers -- but none improved the matching loss within 10K evaluations.
 We attribute this to the loss function rather than the synthesis method: the multi-resolution STFT loss distributes error across all frequency bins and time frames, so a localized harmonic mismatch at $H_2$ and $H_3$ contributes only a small fraction of the total gradient signal.
 A loss term that explicitly penalizes per-harmonic amplitude ratios may be needed to guide the optimizer toward the correct harmonic structure.
 
@@ -55,7 +55,7 @@ At 50K--500K evaluations per run, total optimization time ranges from minutes to
 
 \paragraph{Loss plateau.}
 Beyond approximately 50K evaluations, we observe diminishing returns: the matching loss plateaus regardless of population size, step-size adaptation, or multi-start restarts.
-This plateau suggests an architectural limit of the subtractive synthesizer rather than insufficient search---the optimizer has found the best patch the architecture can express.
+This plateau suggests an architectural limit of the subtractive synthesizer rather than insufficient search -- the optimizer has found the best patch the architecture can express.
 
 \subsection{Future Work}
 
@@ -66,7 +66,7 @@ Replacing CMA-ES with a trained neural encoder (supervised, reinforcement learni
 Prior work on differentiable synthesizers~\cite{engel2020ddsp, masuda2023improving} demonstrates that encoder--decoder architectures can achieve competitive quality with orders-of-magnitude faster inference.
 
 \paragraph{Richer synthesis architectures.}
-Extending the signal chain with wavetable oscillators, FM operators, or Chebyshev waveshaping---paired with appropriate loss guidance---could break through the harmonic structure floor.
+Extending the signal chain with wavetable oscillators, FM operators, or Chebyshev waveshaping -- paired with appropriate loss guidance -- could break through the harmonic structure floor.
 The key insight from our hypothesis tests is that adding synthesis capacity alone is insufficient; the loss function must also be able to ``see'' the harmonic mismatch.
 
 \paragraph{Perceptual loss functions.}
@@ -74,4 +74,4 @@ Replacing or augmenting the multi-resolution STFT loss with perceptual metrics s
 Our TFS envelope loss experiment (Test~C) showed marginal improvement, but more sophisticated perceptual losses that operate on learned audio representations may better capture the nuances that spectral losses miss.
 
 \paragraph{Real-time inference.}
-Distilling the CMA-ES search into a lightweight neural network---or using gradient-based optimization on a fully differentiable synthesizer---could enable real-time parameter estimation suitable for live performance or interactive sound design tools.
+Distilling the CMA-ES search into a lightweight neural network -- or using gradient-based optimization on a fully differentiable synthesizer -- could enable real-time parameter estimation suitable for live performance or interactive sound design tools.

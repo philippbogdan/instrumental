@@ -1,9 +1,9 @@
-% figures.tex — Tables and figures for INSTRUMENTAL paper
+% figures.tex  --  Tables and figures for INSTRUMENTAL paper
 
 % ─────────────────────────────────────────────────────────────
 % Table 1: Results progression
 % ─────────────────────────────────────────────────────────────
-\begin{table}[H]
+\begin{table}[ht]
 \centering
 \caption{Progression of synthesizer parameter recovery across key development versions. Each row marks a milestone where a qualitative improvement was introduced.}
 \label{tab:progression}
@@ -22,7 +22,7 @@ v24 & 28 & 2.09 & + parametric EQ \\
 % ─────────────────────────────────────────────────────────────
 % Table 2: Hypothesis testing
 % ─────────────────────────────────────────────────────────────
-\begin{table}[H]
+\begin{table}[ht]
 \centering
 \caption{Ablation study over synthesizer component hypotheses. Each row shows the loss when the given component is added or removed. The best-performing configuration (parametric EQ) is highlighted.}
 \label{tab:hypotheses}
@@ -30,7 +30,7 @@ v24 & 28 & 2.09 & + parametric EQ \\
 \toprule
 \textbf{Hypothesis} & \textbf{Loss} & \textbf{Change (\%)} \\
 \midrule
-Baseline (v22)            & 2.13 &  ---   \\
+Baseline (v22)            & 2.13 &   --    \\
 Remove slope parameter    & 2.28 & +7.0  \\
 Remove pulse width        & 2.19 & +2.8  \\
 Double population size     & 2.12 & $-$0.5 \\
@@ -45,7 +45,7 @@ Add sub-oscillator         & 2.14 & +0.5  \\
 % ─────────────────────────────────────────────────────────────
 % Figure 1: Convergence curve
 % ─────────────────────────────────────────────────────────────
-\begin{figure}[H]
+\begin{figure}[ht]
 \centering
 \begin{tikzpicture}
 \begin{axis}[
@@ -95,7 +95,7 @@ Add sub-oscillator         & 2.14 & +0.5  \\
 % ─────────────────────────────────────────────────────────────
 % Figure 2: Pipeline flowchart
 % ─────────────────────────────────────────────────────────────
-\begin{figure}[H]
+\begin{figure}[ht]
 \centering
 \begin{tikzpicture}[
     node distance=1.6cm,
@@ -150,7 +150,7 @@ Add sub-oscillator         & 2.14 & +0.5  \\
 % ─────────────────────────────────────────────────────────────
 % Figure 3: Harmonic amplitude comparison
 % ─────────────────────────────────────────────────────────────
-\begin{figure}[H]
+\begin{figure}[ht]
 \centering
 \begin{tikzpicture}
 \begin{axis}[

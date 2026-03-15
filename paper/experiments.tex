@@ -10,12 +10,12 @@ All experiments use 44.1\,kHz audio on an Apple M4 Mini (10 CPU cores, 16\,GB un
 \label{sec:target-sound}
 
 The target is a lead synthesizer extracted from a commercial song.
-We isolate 22 individual notes at three pitches---$\text{A3}=221$\,Hz, $\text{C\#4}=278$\,Hz, and $\text{D4}=295$\,Hz---spanning approximately 3.2 seconds at ${\sim}100$\,BPM, with each note lasting ${\sim}150$\,ms.
+We isolate 22 individual notes at three pitches -- $\text{A3}=221$\,Hz, $\text{C\#4}=278$\,Hz, and $\text{D4}=295$\,Hz -- spanning approximately 3.2 seconds at ${\sim}100$\,BPM, with each note lasting ${\sim}150$\,ms.
 The notes are segmented using onset detection and pitch tracking via \texttt{librosa.pyin}.
 
 For optimization, we select a representative subset of three notes (one per pitch class) as fitting targets.
 The loss $\mathcal{L}$ averaged over these three notes serves as the primary metric throughout all experiments.
-We use the \emph{matching loss}---a weighted combination of perceptually-scaled multi-resolution STFT, spectral centroid distance, and MFCC distance:
+We use the \emph{matching loss} -- a weighted combination of perceptually-scaled multi-resolution STFT, spectral centroid distance, and MFCC distance:
 \begin{equation}
   \mathcal{L}_{\text{match}} = 1.0 \cdot \mathcal{L}_{\text{MelSTFT}} + 0.1 \cdot \mathcal{L}_{\text{centroid}} + 0.05 \cdot \mathcal{L}_{\text{MFCC}}
   \label{eq:matching-loss}
@@ -38,7 +38,7 @@ Each configuration is optimized with CMA-ES for 100K evaluations (population siz
 \toprule
 \textbf{Params} & \textbf{Modules added} & \textbf{Loss} & \textbf{$\Delta$} \\
 \midrule
-15 & Osc.\ mix, filter, ADSR, reverb & 4.60 & --- \\
+15 & Osc.\ mix, filter, ADSR, reverb & 4.60 &  --  \\
 18 & + unison voices/spread, noise floor & 2.34 & $-49.1\%$ \\
 24 & + pulse width, filter ADSR, filter slope & 2.13 & $-9.0\%$ \\
 28 & + 2-band parametric EQ & 2.09 & $-1.9\%$ \\
@@ -76,7 +76,7 @@ B & 2-band parametric EQ & +4 & 1.96 & $-8\%$ \\
 C & TFS / envelope loss & 0 & 2.49 & $+17\%$ \\
 D & CDPAM perceptual loss & 0 & \multicolumn{2}{c}{\emph{skipped}\footnotemark} \\
 E & SPSA fine-tuning (5K CMA + 5K SPSA) & 0 & 2.36 & $+11\%$ \\
-F & CLAP embedding loss & 0 & 0.095\textsuperscript{*} & --- \\
+F & CLAP embedding loss & 0 & 0.095\textsuperscript{*} &  --  \\
 G & Multi-start CMA-ES ($8 \times 1.25$K) & 0 & 2.75 & $+29\%$ \\
 H & FM synthesis (carrier + modulator) & +2 & 2.49 & $+17\%$ \\
 \bottomrule
@@ -93,7 +93,7 @@ H & FM synthesis (carrier + modulator) & +2 & 2.49 & $+17\%$ \\
   \item \textbf{TFS/envelope loss (C)} adds an RMS-envelope trajectory term to the matching loss. The resulting parameters score 17\% worse under the standard loss, indicating that the envelope term distorts the spectral optimization landscape.
   \item \textbf{SPSA fine-tuning (E)} splits the budget into 5K CMA-ES + 5K SPSA gradient steps. The two-phase approach performs 11\% worse, likely because SPSA's noisy gradient estimates are too imprecise in the 24-dimensional space to improve on CMA-ES alone at this budget.
   \item \textbf{Multi-start CMA-ES (G)} distributes the same 10K budget across 8 independent restarts ($8 \times 1.25$K each). This performs 29\% worse, confirming that with a warm-start initialization the landscape is unimodal enough that concentrating the full budget on a single run is preferable.
-  \item \textbf{CLAP loss (F)} converges rapidly but in a different quality regime---the CLAP embedding space captures ``sounds like a synthesizer'' rather than ``has the same spectral envelope,'' making it unsuitable as a drop-in replacement for spectral losses in parameter recovery tasks.
+  \item \textbf{CLAP loss (F)} converges rapidly but in a different quality regime -- the CLAP embedding space captures ``sounds like a synthesizer'' rather than ``has the same spectral envelope,'' making it unsuitable as a drop-in replacement for spectral losses in parameter recovery tasks.
 \end{itemize}
 
 %% ─────────────────────────────────────────────────
@@ -109,7 +109,7 @@ CMA-ES converges to loss ${\approx}\,2.09$ (28 params) and ${\approx}\,2.13$ (24
 \paragraph{Adam (gradient descent).}
 We use Adam with cosine-annealing learning rate ($\text{lr}_0 = 0.02$, $\eta_{\min} = 0.001$) and gradient noise injection for exploration, running for 500 steps with the differentiable synthesizer.
 Adam plateaus at a higher loss than CMA-ES on the real-audio target: the multi-resolution STFT landscape contains many shallow local minima that trap gradient-based search.
-On \emph{synthetic} targets (Level~0: known ground truth), Adam converges reliably to loss $< 0.01$ in under 500 steps, confirming that the synth and loss are fully differentiable---the difficulty lies in the real-audio matching landscape, not the optimization machinery.
+On \emph{synthetic} targets (Level~0: known ground truth), Adam converges reliably to loss $< 0.01$ in under 500 steps, confirming that the synth and loss are fully differentiable -- the difficulty lies in the real-audio matching landscape, not the optimization machinery.
 
 \paragraph{RL--PPO.}
 A PPO agent (2-layer MLP, 256 units, 8 parallel environments) trained for 1M timesteps learns to adjust 18 synth parameters over 50-step episodes.
@@ -134,7 +134,7 @@ On the M4 Mini (10 CPU cores), this achieves \textbf{553 evaluations per second}
 
 \paragraph{Multi-process CPU synthesis.}
 An alternative 8-process \texttt{multiprocessing.Pool} implementation renders each candidate independently using the single-candidate synthesizer.
-On the same M4 Mini hardware this achieves ${\sim}200$ evaluations per second---$2.8\times$ slower than the batched approach due to inter-process communication overhead and the inability to share FFT plans across workers.
+On the same M4 Mini hardware this achieves ${\sim}200$ evaluations per second -- $2.8\times$ slower than the batched approach due to inter-process communication overhead and the inability to share FFT plans across workers.
 
 \paragraph{Cloud comparison.}
 We also benchmark on an Azure Standard\_D48s\_v5 VM (48 vCPU, Intel Xeon Platinum 8370C).
