@@ -45,8 +45,8 @@ PARAM_DEFS = [
 N_PARAMS = len(PARAM_DEFS)
 
 # Pre-compute param ranges as tensors for fast denormalization
-_LO = torch.tensor([float(lo) for _, lo, _ in PARAM_DEFS])
-_HI = torch.tensor([float(hi) for _, hi, _ in PARAM_DEFS])
+_LO = torch.tensor([float(lo) for name, lo, hi in PARAM_DEFS])
+_HI = torch.tensor([float(hi) for name, lo, hi in PARAM_DEFS])
 _RANGE = _HI - _LO
 
 # Fixed unison voice offsets: [-1, -0.5, 0, 0.5, 1] normalized

@@ -7,8 +7,8 @@ import subprocess
 import time
 import librosa
 import cma
+import torchaudio
 from src.synth_gpu import SynthPatchGPU, PARAM_DEFS, N_PARAMS
-from src.losses import get_loss
 
 # Load targets
 TARGET_NOTES = []
@@ -17,7 +17,40 @@ for f, freq in [('notes/note_03_A3_221Hz.wav', 221.0), ('notes/note_02_Cs4_278Hz
     TARGET_NOTES.append((torch.tensor(audio, dtype=torch.float32), freq, len(audio) / 44100))
 
 synth = SynthPatchGPU()
-loss_fn = get_loss("matching")  # Original MatchingLoss — correct values
+
+# Batched matching loss
+_mfcc_transform = torchaudio.transforms.MFCC(sample_rate=44100, n_mfcc=13,
+    melkwargs={"n_fft": 1024, "hop_length": 256, "n_mels": 40})
+
+def batched_loss(gen_batch, target):
+    B, N = gen_batch.shape
+    tgt_expanded = target.unsqueeze(0).expand(B, -1)
+    total = torch.zeros(B)
+    for n_fft, hop in [(1024, 256), (2048, 512)]:
+        if N < n_fft: continue
+        window = torch.hann_window(n_fft)
+        sg = torch.stft(gen_batch, n_fft=n_fft, hop_length=hop, window=window, return_complex=True)
+        st = torch.stft(tgt_expanded, n_fft=n_fft, hop_length=hop, window=window, return_complex=True)
+        mg, mt = sg.abs(), st.abs()
+        mel_fb = torchaudio.functional.melscale_fbanks(n_freqs=n_fft//2+1, f_min=0, f_max=22050, n_mels=128, sample_rate=44100)
+        mg_mel = torch.einsum('bft,fm->bmt', mg, mel_fb)
+        mt_mel = torch.einsum('bft,fm->bmt', mt, mel_fb)
+        sc = torch.norm(mt_mel - mg_mel, dim=(1,2)) / (torch.norm(mt_mel, dim=(1,2)) + 1e-8)
+        lm = torch.mean(torch.abs(torch.log(mg_mel.clamp(min=1e-8)) - torch.log(mt_mel.clamp(min=1e-8))), dim=(1,2))
+        total += sc + lm
+    # Centroid
+    window = torch.hann_window(2048)
+    sg = torch.stft(gen_batch, n_fft=2048, hop_length=512, window=window, return_complex=True).abs()
+    st = torch.stft(tgt_expanded, n_fft=2048, hop_length=512, window=window, return_complex=True).abs()
+    freqs = torch.fft.rfftfreq(2048, d=1/44100).view(1,-1,1)
+    cent_g = (freqs * sg).sum(dim=1) / (sg.sum(dim=1) + 1e-8)
+    cent_t = (freqs * st).sum(dim=1) / (st.sum(dim=1) + 1e-8)
+    total += 0.1 * torch.mean(torch.abs(cent_g - cent_t), dim=1) / 22050
+    # MFCC
+    mfcc_g = _mfcc_transform(gen_batch)
+    mfcc_t = _mfcc_transform(tgt_expanded)
+    total += 0.05 * torch.mean((mfcc_g - mfcc_t)**2, dim=(1,2))
+    return total
 
 # v11 init mapped to 24 params
 v11 = [0.7329, 0.9156, 0.0029, 0.0127, 0.5, 0.9937, 0.2039, 0.0002, 0.1137, 0.8624,
@@ -45,16 +78,13 @@ if __name__ == "__main__":
         solutions = es.ask()
         params_batch = torch.tensor(np.array(solutions), dtype=torch.float32)
 
-        # Batched render, sequential loss (MatchingLoss isn't batched)
+        # Fully batched render + loss
         total_losses = torch.zeros(POPSIZE)
         for target_audio, freq, dur in TARGET_NOTES:
             gen_batch = synth.render(params_batch, f0_hz=freq, duration=dur, note_duration=dur * 0.9)
-            tgt = target_audio.unsqueeze(0)
-            for i in range(POPSIZE):
-                gen_i = gen_batch[i:i+1]
-                ml = min(tgt.shape[1], gen_i.shape[1])
-                loss = loss_fn(gen_i[:, :ml].unsqueeze(0), tgt[:, :ml].unsqueeze(0))
-                total_losses[i] += loss.item()
+            ml = min(target_audio.shape[0], gen_batch.shape[1])
+            losses = batched_loss(gen_batch[:, :ml], target_audio[:ml])
+            total_losses += losses.detach()
 
         fitnesses = (total_losses / len(TARGET_NOTES)).tolist()
         es.tell(solutions, fitnesses)
