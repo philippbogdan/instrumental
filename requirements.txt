@@ -1,0 +1,6 @@
+torch
+torchaudio
+torchsynth
+auraloss
+soundfile
+librosa
