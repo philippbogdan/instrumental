@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>INSTRUMENTAL — Inverse Synthesis</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-primary: #0a0a0f;
+    --bg-secondary: #12121a;
+    --bg-panel: #16161f;
+    --bg-panel-hover: #1c1c28;
+    --border: #2a2a3a;
+    --border-active: #4a4a6a;
+    --text-primary: #e8e8f0;
+    --text-secondary: #8888a8;
+    --text-dim: #55556a;
+    --accent-cyan: #00d4ff;
+    --accent-cyan-dim: rgba(0, 212, 255, 0.15);
+    --accent-amber: #ffaa00;
+    --accent-amber-dim: rgba(255, 170, 0, 0.15);
+    --accent-red: #ff4466;
+    --accent-green: #44ff88;
+    --accent-purple: #aa66ff;
+    --wave-original: #00d4ff;
+    --wave-matched: #ffaa00;
+    --knob-track: #2a2a3a;
+    --knob-fill: #00d4ff;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'DM Sans', sans-serif;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* ─── HEADER ─── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--accent-cyan);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    background: var(--accent-cyan);
+    border-radius: 50%;
+    box-shadow: 0 0 12px var(--accent-cyan);
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 0.6; box-shadow: 0 0 8px var(--accent-cyan); }
+    50% { opacity: 1; box-shadow: 0 0 20px var(--accent-cyan); }
+  }
+
+  .header-status {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    gap: 24px;
+  }
+
+  .status-item { display: flex; align-items: center; gap: 6px; }
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 8px var(--accent-green);
+  }
+  .status-dot.amber { background: var(--accent-amber); box-shadow: 0 0 8px var(--accent-amber); }
+  .status-dot.red { background: var(--accent-red); box-shadow: 0 0 8px var(--accent-red); }
+
+  /* ─── MAIN GRID ─── */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    grid-template-rows: auto auto auto;
+    gap: 1px;
+    background: var(--border);
+    min-height: calc(100vh - 53px);
+  }
+
+  /* ─── PANELS ─── */
+  .panel {
+    background: var(--bg-panel);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .panel-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .panel-label::before {
+    content: '';
+    width: 3px;
+    height: 10px;
+    background: var(--accent-cyan);
+    border-radius: 1px;
+  }
+
+  /* ─── WAVEFORM DISPLAY ─── */
+  .waveform-section {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .waveform-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .waveform-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .waveform-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    width: 70px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .waveform-label.original { color: var(--wave-original); }
+  .waveform-label.matched { color: var(--wave-matched); }
+
+  canvas.waveform {
+    width: 100%;
+    height: 80px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-primary);
+  }
+
+  /* ─── SPECTRUM ─── */
+  .spectrum-section {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  canvas.spectrum {
+    width: 100%;
+    height: 200px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-primary);
+  }
+
+  /* ─── LOSS CURVE ─── */
+  .loss-section {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  canvas.loss-curve {
+    width: 100%;
+    height: 160px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-primary);
+  }
+
+  .loss-stats {
+    display: flex;
+    gap: 24px;
+    margin-top: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+
+  .loss-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .loss-stat-label {
+    color: var(--text-dim);
+    font-size: 9px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .loss-stat-value {
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .loss-stat-value.good { color: var(--accent-green); }
+  .loss-stat-value.mid { color: var(--accent-amber); }
+  .loss-stat-value.bad { color: var(--accent-red); }
+
+  /* ─── KNOBS PANEL ─── */
+  .knobs-section {
+    grid-column: 2;
+    grid-row: 1 / 4;
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    max-height: calc(100vh - 53px);
+  }
+
+  .knobs-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .knob-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .knob-wrapper:hover {
+    border-color: var(--border-active);
+    background: var(--bg-panel-hover);
+  }
+
+  .knob {
+    width: 48px;
+    height: 48px;
+    position: relative;
+  }
+
+  .knob svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-135deg);
+  }
+
+  .knob-track {
+    fill: none;
+    stroke: var(--knob-track);
+    stroke-width: 4;
+    stroke-linecap: round;
+  }
+
+  .knob-fill {
+    fill: none;
+    stroke: var(--knob-fill);
+    stroke-width: 4;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.3s ease;
+    filter: drop-shadow(0 0 4px var(--knob-fill));
+  }
+
+  .knob-dot {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: var(--text-primary);
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform-origin: center;
+    box-shadow: 0 0 4px rgba(255,255,255,0.5);
+  }
+
+  .knob-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    text-align: center;
+    line-height: 1.3;
+  }
+
+  .knob-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  /* ─── CONTROLS ─── */
+  .controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn:hover {
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+    background: var(--accent-cyan-dim);
+  }
+
+  .btn.active {
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+    background: var(--accent-cyan-dim);
+    box-shadow: 0 0 12px rgba(0, 212, 255, 0.1);
+  }
+
+  .btn.amber:hover, .btn.amber.active {
+    border-color: var(--accent-amber);
+    color: var(--accent-amber);
+    background: var(--accent-amber-dim);
+  }
+
+  /* ─── FILE DROP ─── */
+  .file-drop {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    margin-bottom: 16px;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+
+  .file-drop:hover, .file-drop.dragover {
+    border-color: var(--accent-cyan);
+    background: var(--accent-cyan-dim);
+  }
+
+  .file-drop-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  /* ─── SCROLLBAR ─── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg-primary); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+
+  /* ─── ANIMATIONS ─── */
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .panel { animation: fade-in 0.4s ease-out; }
+  .panel:nth-child(2) { animation-delay: 0.05s; }
+  .panel:nth-child(3) { animation-delay: 0.1s; }
+  .panel:nth-child(4) { animation-delay: 0.15s; }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 900px) {
+    .main {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto auto auto;
+    }
+    .knobs-section {
+      grid-column: 1;
+      grid-row: 4;
+      max-height: none;
+      border-left: none;
+      border-top: 1px solid var(--border);
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">INSTRUMENTAL</div>
+  <div class="header-status">
+    <div class="status-item">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Ready</span>
+    </div>
+    <div class="status-item">
+      <span>Loss: <strong id="headerLoss">—</strong></span>
+    </div>
+    <div class="status-item">
+      <span>Centroid Δ: <strong id="headerCentroid">—</strong></span>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <!-- WAVEFORMS -->
+  <div class="panel waveform-section">
+    <div class="panel-label">Waveforms</div>
+    <div class="controls">
+      <button class="btn active" onclick="playOriginal()" id="btnOriginal">▶ Original</button>
+      <button class="btn amber" onclick="playMatched()" id="btnMatched">▶ Matched</button>
+      <button class="btn" onclick="playBoth()">▶ A/B Compare</button>
+    </div>
+    <div class="file-drop" id="fileDrop" onclick="document.getElementById('fileInput').click()">
+      <div class="file-drop-text">Drop audio file or click to load</div>
+      <input type="file" id="fileInput" accept="audio/*" style="display:none">
+    </div>
+    <div class="waveform-container">
+      <div class="waveform-row">
+        <div class="waveform-label original">Original</div>
+        <canvas class="waveform" id="waveOriginal"></canvas>
+      </div>
+      <div class="waveform-row">
+        <div class="waveform-label matched">Matched</div>
+        <canvas class="waveform" id="waveMatched"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- SPECTRUM -->
+  <div class="panel spectrum-section">
+    <div class="panel-label">Spectral Comparison</div>
+    <canvas class="spectrum" id="spectrum"></canvas>
+  </div>
+
+  <!-- LOSS CURVE -->
+  <div class="panel loss-section">
+    <div class="panel-label">Optimization Progress</div>
+    <canvas class="loss-curve" id="lossCurve"></canvas>
+    <div class="loss-stats">
+      <div class="loss-stat">
+        <div class="loss-stat-label">Current Loss</div>
+        <div class="loss-stat-value mid" id="currentLoss">2.34</div>
+      </div>
+      <div class="loss-stat">
+        <div class="loss-stat-label">Best Loss</div>
+        <div class="loss-stat-value good" id="bestLoss">2.34</div>
+      </div>
+      <div class="loss-stat">
+        <div class="loss-stat-label">Steps</div>
+        <div class="loss-stat-value" id="totalSteps">29,200</div>
+      </div>
+      <div class="loss-stat">
+        <div class="loss-stat-label">Centroid Δ</div>
+        <div class="loss-stat-value good" id="centroidDiff">133 Hz</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KNOBS -->
+  <div class="panel knobs-section">
+    <div class="panel-label">Synth Parameters</div>
+    <div class="knobs-grid" id="knobsGrid"></div>
+  </div>
+</div>
+
+<script>
+// ─── AUDIO CONTEXT ───
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let originalBuffer = null;
+let matchedBuffer = null;
+
+// ─── SYNTH PARAMS (v11 CMA-ES best) ───
+const PARAMS = [
+  { name: 'saw mix', value: 0.7329 },
+  { name: 'square mix', value: 0.0024 },
+  { name: 'sine mix', value: 0.9994 },
+  { name: 'noise mix', value: 0.0127 },
+  { name: 'detune', value: 0.4997 },
+  { name: 'filter cutoff', value: 0.9937 },
+  { name: 'filter reso', value: 0.2039 },
+  { name: 'attack', value: 0.0002 },
+  { name: 'decay', value: 0.1137 },
+  { name: 'sustain', value: 0.8624 },
+  { name: 'release', value: 0.9048 },
+  { name: 'gain', value: 0.1422 },
+  { name: 'filter env', value: 0.2972 },
+  { name: 'reverb size', value: 0.5472 },
+  { name: 'reverb mix', value: 0.0247 },
+  { name: 'unison', value: 0.7223 },
+  { name: 'uni spread', value: 0.0012 },
+  { name: 'noise floor', value: 0.4182 },
+];
+
+// ─── LOSS HISTORY (simulated from our runs) ───
+const LOSS_HISTORY = [];
+for (let i = 0; i < 100; i++) {
+  const x = i / 100;
+  LOSS_HISTORY.push(10 * Math.exp(-3 * x) + 2.34 + Math.random() * 0.3);
+}
+
+// ─── RENDER KNOBS ───
+function renderKnobs() {
+  const grid = document.getElementById('knobsGrid');
+  grid.innerHTML = '';
+
+  PARAMS.forEach((param, i) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'knob-wrapper';
+
+    const circumference = 2 * Math.PI * 18;
+    const arcLength = circumference * 0.75; // 270 degrees
+    const offset = arcLength * (1 - param.value);
+
+    const hue = param.value > 0.5 ? 190 : 35; // cyan for high, amber for low
+    const color = param.value > 0.7 ? 'var(--accent-cyan)' :
+                  param.value > 0.3 ? 'var(--accent-purple)' : 'var(--accent-amber)';
+
+    wrapper.innerHTML = `
+      <div class="knob">
+        <svg viewBox="0 0 40 40">
+          <circle class="knob-track" cx="20" cy="20" r="18"
+            stroke-dasharray="${arcLength} ${circumference}"
+            stroke-dashoffset="0" />
+          <circle class="knob-fill" cx="20" cy="20" r="18"
+            stroke="${color}"
+            stroke-dasharray="${arcLength} ${circumference}"
+            stroke-dashoffset="${offset}"
+            style="filter: drop-shadow(0 0 4px ${color})" />
+        </svg>
+      </div>
+      <div class="knob-name">${param.name}</div>
+      <div class="knob-value">${param.value.toFixed(3)}</div>
+    `;
+    grid.appendChild(wrapper);
+  });
+}
+
+// ─── DRAW WAVEFORM ───
+function drawWaveform(canvas, data, color) {
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvas.offsetWidth * dpr;
+  canvas.height = canvas.offsetHeight * dpr;
+  ctx.scale(dpr, dpr);
+
+  const w = canvas.offsetWidth;
+  const h = canvas.offsetHeight;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(42, 42, 58, 0.5)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(0, h / 2);
+  ctx.lineTo(w, h / 2);
+  ctx.stroke();
+
+  if (!data || data.length === 0) {
+    // Draw placeholder sine
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let x = 0; x < w; x++) {
+      const y = h / 2 + Math.sin(x * 0.05) * h * 0.3;
+      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  // Draw actual waveform
+  const step = Math.max(1, Math.floor(data.length / w));
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.globalAlpha = 0.9;
+  ctx.beginPath();
+
+  for (let x = 0; x < w; x++) {
+    const idx = Math.floor(x / w * data.length);
+    let min = 1, max = -1;
+    for (let j = 0; j < step; j++) {
+      const val = data[idx + j] || 0;
+      if (val < min) min = val;
+      if (val > max) max = val;
+    }
+    const yMin = (1 - (min + 1) / 2) * h;
+    const yMax = (1 - (max + 1) / 2) * h;
+    ctx.moveTo(x, yMin);
+    ctx.lineTo(x, yMax);
+  }
+  ctx.stroke();
+
+  // Glow effect
+  ctx.globalAlpha = 0.15;
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+// ─── DRAW SPECTRUM ───
+function drawSpectrum(canvas, origData, matchData) {
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvas.offsetWidth * dpr;
+  canvas.height = canvas.offsetHeight * dpr;
+  ctx.scale(dpr, dpr);
+
+  const w = canvas.offsetWidth;
+  const h = canvas.offsetHeight;
+  ctx.clearRect(0, 0, w, h);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(42, 42, 58, 0.3)';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i < 5; i++) {
+    const y = (i / 4) * h;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+
+  // Frequency labels
+  ctx.fillStyle = 'var(--text-dim)';
+  ctx.font = '9px "JetBrains Mono"';
+  const freqLabels = ['100', '500', '1k', '5k', '10k', '20k'];
+  freqLabels.forEach((label, i) => {
+    const x = (i / (freqLabels.length - 1)) * w;
+    ctx.fillText(label, x, h - 4);
+  });
+
+  // Generate spectral data if no real data
+  const nBins = 256;
+  const drawSpec = (data, color, alpha) => {
+    if (!data) {
+      data = new Float32Array(nBins);
+      for (let i = 0; i < nBins; i++) {
+        data[i] = Math.exp(-i / 40) * (0.5 + 0.5 * Math.random());
+      }
+    }
+
+    // Fill
+    const grad = ctx.createLinearGradient(0, h, 0, 0);
+    grad.addColorStop(0, 'transparent');
+    grad.addColorStop(1, color);
+    ctx.fillStyle = grad;
+    ctx.globalAlpha = alpha * 0.3;
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    for (let i = 0; i < nBins; i++) {
+      const x = (i / nBins) * w;
+      const y = h - data[i] * h * 0.9;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(w, h);
+    ctx.fill();
+
+    // Line
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    for (let i = 0; i < nBins; i++) {
+      const x = (i / nBins) * w;
+      const y = h - data[i] * h * 0.9;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  };
+
+  drawSpec(origData, '#00d4ff', 0.8);
+  drawSpec(matchData, '#ffaa00', 0.6);
+
+  // Legend
+  ctx.font = '10px "JetBrains Mono"';
+  ctx.fillStyle = '#00d4ff';
+  ctx.fillText('● Original', w - 160, 16);
+  ctx.fillStyle = '#ffaa00';
+  ctx.fillText('● Matched', w - 80, 16);
+}
+
+// ─── DRAW LOSS CURVE ───
+function drawLossCurve(canvas, history) {
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvas.offsetWidth * dpr;
+  canvas.height = canvas.offsetHeight * dpr;
+  ctx.scale(dpr, dpr);
+
+  const w = canvas.offsetWidth;
+  const h = canvas.offsetHeight;
+  ctx.clearRect(0, 0, w, h);
+
+  if (!history.length) return;
+
+  const maxLoss = Math.max(...history);
+  const minLoss = Math.min(...history);
+  const range = maxLoss - minLoss || 1;
+
+  // Grid
+  ctx.strokeStyle = 'rgba(42, 42, 58, 0.3)';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = (i / 4) * h;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+
+    ctx.fillStyle = '#55556a';
+    ctx.font = '9px "JetBrains Mono"';
+    const val = maxLoss - (i / 4) * range;
+    ctx.fillText(val.toFixed(1), 4, y + 12);
+  }
+
+  // Fill under curve
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, 'rgba(0, 212, 255, 0.2)');
+  grad.addColorStop(1, 'rgba(0, 212, 255, 0.0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  history.forEach((val, i) => {
+    const x = (i / (history.length - 1)) * w;
+    const y = ((maxLoss - val) / range) * h;
+    ctx.lineTo(x, y);
+  });
+  ctx.lineTo(w, h);
+  ctx.fill();
+
+  // Line
+  ctx.strokeStyle = '#00d4ff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  history.forEach((val, i) => {
+    const x = (i / (history.length - 1)) * w;
+    const y = ((maxLoss - val) / range) * h;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Glow
+  ctx.globalAlpha = 0.3;
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // Best point
+  const bestIdx = history.indexOf(minLoss);
+  const bx = (bestIdx / (history.length - 1)) * w;
+  const by = ((maxLoss - minLoss) / range) * h;
+  ctx.fillStyle = '#44ff88';
+  ctx.beginPath();
+  ctx.arc(bx, by, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#44ff88';
+  ctx.font = '10px "JetBrains Mono"';
+  ctx.fillText(`best: ${minLoss.toFixed(2)}`, bx + 8, by - 6);
+}
+
+// ─── AUDIO LOADING ───
+async function loadAudio(url) {
+  const response = await fetch(url);
+  const arrayBuffer = await response.arrayBuffer();
+  return await audioCtx.decodeAudioData(arrayBuffer);
+}
+
+function playBuffer(buffer) {
+  const source = audioCtx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(audioCtx.destination);
+  source.start();
+}
+
+function playOriginal() {
+  if (originalBuffer) playBuffer(originalBuffer);
+}
+
+function playMatched() {
+  if (matchedBuffer) playBuffer(matchedBuffer);
+}
+
+function playBoth() {
+  playOriginal();
+  setTimeout(() => playMatched(), (originalBuffer?.duration || 5) * 1000 + 500);
+}
+
+// ─── FILE HANDLING ───
+const fileDrop = document.getElementById('fileDrop');
+const fileInput = document.getElementById('fileInput');
+
+fileDrop.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  fileDrop.classList.add('dragover');
+});
+
+fileDrop.addEventListener('dragleave', () => {
+  fileDrop.classList.remove('dragover');
+});
+
+fileDrop.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  fileDrop.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) await loadFile(file);
+});
+
+fileInput.addEventListener('change', async (e) => {
+  if (e.target.files[0]) await loadFile(e.target.files[0]);
+});
+
+async function loadFile(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  originalBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  const data = originalBuffer.getChannelData(0);
+  drawWaveform(document.getElementById('waveOriginal'), data, '#00d4ff');
+  document.querySelector('.file-drop-text').textContent = `✓ ${file.name}`;
+  updateStatus('Loaded', 'green');
+}
+
+function updateStatus(text, color) {
+  document.getElementById('statusText').textContent = text;
+  const dot = document.getElementById('statusDot');
+  dot.className = 'status-dot';
+  if (color === 'amber') dot.classList.add('amber');
+  if (color === 'red') dot.classList.add('red');
+}
+
+// ─── TRY LOADING LOCAL FILES ───
+async function tryLoadLocalFiles() {
+  try {
+    originalBuffer = await loadAudio('../target.wav');
+    drawWaveform(document.getElementById('waveOriginal'), originalBuffer.getChannelData(0), '#00d4ff');
+    document.querySelector('.file-drop-text').textContent = '✓ target.wav loaded';
+  } catch(e) {}
+
+  try {
+    matchedBuffer = await loadAudio('../output/matched_v11_50k.wav');
+    drawWaveform(document.getElementById('waveMatched'), matchedBuffer.getChannelData(0), '#ffaa00');
+  } catch(e) {}
+}
+
+// ─── INIT ───
+function init() {
+  renderKnobs();
+  drawWaveform(document.getElementById('waveOriginal'), null, '#00d4ff');
+  drawWaveform(document.getElementById('waveMatched'), null, '#ffaa00');
+  drawSpectrum(document.getElementById('spectrum'), null, null);
+  drawLossCurve(document.getElementById('lossCurve'), LOSS_HISTORY);
+  tryLoadLocalFiles();
+}
+
+window.addEventListener('resize', () => {
+  drawWaveform(document.getElementById('waveOriginal'),
+    originalBuffer?.getChannelData(0) || null, '#00d4ff');
+  drawWaveform(document.getElementById('waveMatched'),
+    matchedBuffer?.getChannelData(0) || null, '#ffaa00');
+  drawSpectrum(document.getElementById('spectrum'), null, null);
+  drawLossCurve(document.getElementById('lossCurve'), LOSS_HISTORY);
+});
+
+init();
+</script>
+
+</body>
+</html>
