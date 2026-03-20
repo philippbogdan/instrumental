@@ -53,17 +53,18 @@ class PianoKeyboard {
       'l': base + 17,  // F4
       ';': base + 19,  // G4
       "'": base + 21,  // A4
-      // Top row: sharps
-      'w': base + 1,   // C#3
-      'e': base + 3,   // D#3
-      't': base + 6,   // F#3
-      'y': base + 8,   // G#3
-      'u': base + 10,  // A#3
-      'i': base + 13,  // C#4
-      'o': base + 15,  // D#4
-      'p': base + 18,  // F#4
-      '[': base + 20,  // G#4
-      ']': base + 22,  // A#4
+      // Top row: sharps (positioned above home row gaps)
+      // W between A(E3) and S(F3) -> no sharp (E#=F), skip
+      'e': base + 6,   // F#3  (between S=F3 and D=G3)
+      'r': base + 8,   // G#3  (between D=G3 and F=A3)
+      't': base + 10,  // A#3  (between F=A3 and G=B3)
+      // Y between G(B3) and H(C4) -> no sharp (B#=C), skip
+      'u': base + 13,  // C#4  (between H=C4 and J=D4)
+      'i': base + 15,  // D#4  (between J=D4 and K=E4)
+      // O between K(E4) and L(F4) -> no sharp (E#=F), skip
+      'o': base + 18,  // F#4  (between L=F4 and ;=G4)
+      'p': base + 20,  // G#4  (between ;=G4 and '=A4)
+      '[': base + 22,  // A#4  (after '=A4)
       // Extra: B4
       '\\': base + 23, // B4
     };

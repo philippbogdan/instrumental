@@ -333,6 +333,31 @@ header {
   color: rgba(194, 178, 128, 0.3);
 }
 
+/* ── Export Button ──────────────────────────────── */
+
+.export-btn {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  z-index: 10;
+  padding: 6px 14px;
+  border-radius: 16px;
+  border: 1.5px solid var(--black-mid);
+  background: var(--sand);
+  color: var(--black);
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.2s;
+}
+
+.export-btn:hover {
+  border-color: var(--amaranth);
+  color: var(--amaranth);
+}
+
 /* ── Preset Button ─────────────────────────────── */
 
 .preset-btn {
@@ -418,6 +443,242 @@ header {
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* ── Search ────────────────────────────────────── */
+
+.search-section {
+  margin-bottom: 16px;
+}
+
+.search-bar {
+  display: flex;
+  gap: 8px;
+}
+
+#searchInput {
+  flex: 1;
+  padding: 12px;
+  border: 1px solid var(--black-dim);
+  border-radius: 8px;
+  background: transparent;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.9rem;
+  color: var(--black);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#searchInput:focus {
+  border-color: var(--amaranth);
+}
+
+.search-btn {
+  width: auto;
+  padding: 12px 24px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: var(--amaranth);
+  color: var(--sand);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.search-btn:hover {
+  background: rgba(229, 43, 80, 0.85);
+}
+
+.search-btn:active {
+  transform: scale(0.99);
+}
+
+.search-results {
+  max-height: 360px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.search-result-item:hover {
+  background: var(--amaranth-dim);
+}
+
+.search-result-item img {
+  width: 48px;
+  height: 48px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.search-result-item .result-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.result-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.result-artist {
+  font-size: 0.8rem;
+  color: var(--black-mid);
+}
+
+.divider-or {
+  text-align: center;
+  margin: 16px 0;
+  font-size: 0.8rem;
+  color: var(--black-mid);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ── Player ────────────────────────────────────── */
+
+.player-section {
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+
+.player {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.player-play-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid var(--black-mid);
+  background: var(--sand);
+  color: var(--black);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.player-play-btn:hover {
+  border-color: var(--amaranth);
+  color: var(--amaranth);
+}
+
+.player-progress {
+  flex: 1;
+  height: 4px;
+  background: var(--black-dim);
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.player-progress-fill {
+  height: 100%;
+  background: var(--amaranth);
+  border-radius: 2px;
+  transition: width 0.1s;
+}
+
+.player-time {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--black-mid);
+  white-space: nowrap;
+}
+
+/* ── Stems ─────────────────────────────────────── */
+
+.stem-section {
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+
+.stem-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stem-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--black-dim);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.stem-row:hover {
+  border-color: var(--black-mid);
+}
+
+.stem-row.selected {
+  border-color: var(--amaranth);
+  background: var(--amaranth-dim);
+}
+
+.stem-row.loading {
+  animation: stemPulse 1.5s ease-in-out infinite;
+}
+
+.stem-row.loading .stem-waveform {
+  background: var(--black-dim);
+  border-radius: 4px;
+}
+
+@keyframes stemPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.stem-label {
+  width: 60px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stem-waveform {
+  flex: 1;
+  height: 36px;
+}
+
+.stem-waveform canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ── Progress Phase ────────────────────────────── */
+
+.progress-phase {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--amaranth);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 /* ── Responsive ────────────────────────────────── */

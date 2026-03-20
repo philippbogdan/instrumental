@@ -53,7 +53,7 @@ Prior work on automatic synthesizer programming~\cite{barkan2019inversynth,chen2
 \node[box] (audio) {Audio};
 \node[box, right of=audio, node distance=1.8cm] (demucs) {Demucs};
 \node[box, right of=demucs, node distance=1.8cm] (pitch) {Pitch\\Detection};
-\node[loopbox, below of=pitch, node distance=1.2cm] (synth) {Synth};
+\node[loopbox, below of=pitch, node distance=1.5cm] (synth) {Synth};
 \node[loopbox, left of=synth, node distance=1.8cm] (loss) {Loss};
 \node[loopbox, left of=loss, node distance=1.8cm] (cmaes) {CMA-ES};
 \node[box, below of=cmaes, node distance=1.0cm] (out) {Params};
@@ -63,7 +63,8 @@ Prior work on automatic synthesizer programming~\cite{barkan2019inversynth,chen2
 \draw[arr] (pitch) -- (synth);
 \draw[arr] (synth) -- (loss);
 \draw[arr] (loss) -- (cmaes);
-\draw[arr] (cmaes) -- (synth);
+% Route feedback arrow above the loop boxes to avoid overlapping Loss
+\draw[arr] (cmaes.north) -- ++(0,0.35) -| (synth.north);
 \draw[arr] (cmaes) -- (out);
 \end{tikzpicture}
 \caption{Pipeline: audio $\to$ Demucs separation $\to$ pitch detection $\to$ CMA-ES optimization loop $\to$ output parameters.}
@@ -128,15 +129,18 @@ $\mathcal{L}_{\text{mel}}$ computes spectral convergence and log-magnitude L1 on
 \begin{axis}[
     width=\linewidth, height=3.8cm,
     xlabel={\small Evaluations}, ylabel={\small Loss},
-    xmin=0, xmax=105000, ymin=1.9, ymax=4.5,
+    xmin=0, xmax=105000, ymin=1.9, ymax=4.8,
     xtick={0,25000,50000,75000,100000},
+    xticklabels={0,25k,50k,75k,100k},
+    ytick={2,3,4},
+    scaled x ticks=false,
     xticklabel style={font=\tiny},
     yticklabel style={font=\tiny},
     xlabel style={font=\small}, ylabel style={font=\small},
     grid=major, grid style={gray!25}, thick,
 ]
-\fill[blue!8] (axis cs:0,1.9) rectangle (axis cs:10000,4.5);
-\node[font=\tiny, text=blue!60!black, anchor=south] at (axis cs:5000,4.0) {90\%};
+\fill[blue!8] (axis cs:0,1.9) rectangle (axis cs:10000,4.8);
+\node[font=\tiny, text=blue!60!black] at (axis cs:5000,4.55) {90\%};
 \addplot[color=blue!80!black, mark=*, mark size=1pt, line width=0.8pt] coordinates {
     (2000,4.21) (4000,2.66) (6000,2.32) (8000,2.25) (10000,2.20)
     (20000,2.16) (40000,2.16) (60000,2.15) (80000,2.14) (100000,2.13)
@@ -260,5 +264,32 @@ Fig.~\ref{fig:harmonics} reveals the source of this floor: upper harmonics (H4--
 \bibliographystyle{plainnat}
 \bibliography{references}
 }
+
+\clearpage
+\appendix
+\section{Web Application}
+
+We provide an interactive web application that wraps the full pipeline. Users upload audio, observe CMA-ES optimization in real time, and play the recovered synthesizer on an on-screen keyboard via WebAudio.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{fig_landing.png}
+\caption{Landing page. Users drop an audio file (MP3 or WAV) and select Single Sound or Sequence mode.}
+\label{fig:app-landing}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{fig_progress.png}
+\caption{Optimization in progress. The progress bar, evaluation count, current best loss, and elapsed time update live via WebSocket as CMA-ES runs across 7 CPU cores.}
+\label{fig:app-progress}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{fig_keyboard.png}
+\caption{Result view. The recovered waveform is displayed above a 2-octave piano keyboard. Each key plays the matched synthesizer at that pitch using WebAudio. The clock button (bottom-right) loads the best pre-computed preset (loss 2.09).}
+\label{fig:app-keyboard}
+\end{figure}
 
 \end{document}

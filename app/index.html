@@ -14,6 +14,15 @@
     <h1 class="logo">INSTRUMENTAL</h1>
   </header>
   <main>
+    <section id="searchSection" class="search-section">
+      <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="Search for a song...">
+        <button id="searchBtn" class="search-btn">Search</button>
+      </div>
+      <div id="searchResults" class="search-results hidden"></div>
+    </section>
+    <div id="dividerOr" class="divider-or">or</div>
+
     <section id="dropZone" class="drop-zone">
       <div class="drop-content">
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -23,10 +32,6 @@
         <p class="drop-hint">MP3 or WAV</p>
       </div>
       <input type="file" id="fileInput" accept=".mp3,.wav,.m4a" hidden>
-      <div class="mode-toggle">
-        <button id="modeSingle" class="mode-btn active">Single Sound</button>
-        <button id="modeSequence" class="mode-btn">Sequence</button>
-      </div>
       <div id="fileInfo" class="file-info hidden">
         <span id="fileName"></span>
         <button id="clearFile" class="clear-btn">x</button>
@@ -34,12 +39,27 @@
       <button id="matchBtn" class="match-btn" disabled>Match</button>
     </section>
 
+    <section id="playerSection" class="player-section hidden">
+      <div class="player">
+        <button id="playerPlayBtn" class="player-play-btn">Play</button>
+        <div id="playerProgressBar" class="player-progress">
+          <div id="playerProgressFill" class="player-progress-fill"></div>
+        </div>
+        <span id="playerTime" class="player-time">0:00 / 0:00</span>
+      </div>
+    </section>
+
+    <section id="stemSection" class="stem-section hidden">
+      <div id="stemContainer" class="stem-container"></div>
+    </section>
+
     <section id="progressSection" class="progress-section hidden">
       <div class="progress-bar">
         <div id="progressFill" class="progress-fill"></div>
       </div>
       <div class="progress-stats">
-        <span id="evalCount">0 / 10,000</span>
+        <span id="progressPhase" class="progress-phase"></span>
+        <span id="evalCount">0 / 20,000</span>
         <span id="currentLoss">Loss: --</span>
         <span id="elapsedTime">0s</span>
       </div>
@@ -60,6 +80,8 @@
   <script src="waveform.js"></script>
   <script src="keyboard.js"></script>
   <script src="daw.js"></script>
+  <script src="player.js"></script>
+  <script src="stems.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
