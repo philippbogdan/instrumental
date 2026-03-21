@@ -448,7 +448,7 @@ async def match_single(
             audio_np = audio_np[:10 * 44100]
 
         target_notes, _ = await asyncio.to_thread(
-            _extract_notes, audio_np, 44100, 5, 0.2
+            _extract_notes, audio_np, 44100, 5, 0.5
         )
 
     # Spectral init from first representative note
@@ -783,7 +783,7 @@ async def extract_notes_endpoint(
 
     # Extract notes in thread
     target_notes, all_notes_with_onsets = await asyncio.to_thread(
-        _extract_notes, audio_np.astype(np.float32), sr, 5, 0.2
+        _extract_notes, audio_np.astype(np.float32), sr, 5, 0.5
     )
 
     # Save each representative note as a WAV file
