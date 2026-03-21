@@ -38,7 +38,7 @@ N_PARAMS = len(PARAM_DEFS)  # 28
 
 app = FastAPI(title="INSTRUMENTAL")
 
-# Ensure multiprocessing uses fork to avoid worker spawn overhead
+# Fork required for multiprocessing.Pool on macOS (spawn fails with module imports)
 multiprocessing.set_start_method("fork", force=True)
 
 app.add_middleware(
@@ -51,6 +51,26 @@ app.add_middleware(
 
 # In-memory job store: job_id -> {queue, status, result, ...}
 jobs: Dict[str, Dict[str, Any]] = {}
+
+# Concurrency locks: prevent OOM from concurrent heavy compute
+# Created lazily on first use (Python 3.9 asyncio.Lock binds to event loop at creation)
+_demucs_lock = None
+_cmaes_lock = None
+_job_queue: list = []           # list of job_ids waiting for CMA-ES
+
+
+def _get_demucs_lock():
+    global _demucs_lock
+    if _demucs_lock is None:
+        _demucs_lock = asyncio.Lock()
+    return _demucs_lock
+
+
+def _get_cmaes_lock():
+    global _cmaes_lock
+    if _cmaes_lock is None:
+        _cmaes_lock = asyncio.Lock()
+    return _cmaes_lock
 
 # Stem separation store: job_id -> {"path": tempdir, "created": time}
 stem_dirs: Dict[str, Dict] = {}
@@ -110,15 +130,13 @@ async def _load_audio_from_upload(file: UploadFile):
     return audio_np, sr
 
 
+MIN_NOTE_SAMPLES = 4500  # ~0.1s at 44100Hz, enough for loss function STFTs
+
 def _extract_notes(audio_np: np.ndarray, sr: int = 44100, max_notes: int = 3, max_note_dur: float = 0.5):
     """
     Extract individual notes from audio via onset detection + pitch tracking.
     Returns list of (audio_segment, freq_hz, duration) tuples for CMA-ES multi-pitch fitting.
-
-    Addresses failure scenarios:
-    - F1: Uses delta=0.07 for onset sensitivity (tuned for Demucs stems with reverb bleed)
-    - F2: Skips notes shorter than 50ms and notes where pitch detection returns NaN
-    - F3: Falls back to 1-second chunk at median pitch if no notes found
+    Each segment is guaranteed >= MIN_NOTE_SAMPLES to avoid FFT crashes.
     """
     audio_np = audio_np.astype(np.float32)
 
@@ -137,7 +155,7 @@ def _extract_notes(audio_np: np.ndarray, sr: int = 44100, max_notes: int = 3, ma
         print("[_extract_notes] WARNING: No onsets detected, using 1s chunk at median pitch")
         chunk = audio_np[:min(len(audio_np), sr)]  # first 1 second
         f0 = _detect_pitch(chunk, sr)
-        return [(chunk, f0, len(chunk) / sr)]
+        return [(chunk, f0, len(chunk) / sr)], [{"onset": 0, "freq": f0, "duration": len(chunk) / sr}]
 
     # Build note segments with pitch per segment
     notes = []
@@ -157,16 +175,21 @@ def _extract_notes(audio_np: np.ndarray, sr: int = 44100, max_notes: int = 3, ma
         end_sample = min(end_sample, len(audio_np))
         seg_audio = audio_np[start_sample:end_sample]
 
-        if len(seg_audio) < int(0.05 * sr):
+        # Skip notes too short for the loss function's FFT (8192 samples = ~0.19s)
+        if len(seg_audio) < MIN_NOTE_SAMPLES:
             continue
 
-        # Detect pitch for this segment using pyin
+        # Detect pitch with fmax=500 only (prevents harmonic locking)
+        # No fallback to higher range - if there's no fundamental below 500Hz, skip
         f0_arr, voiced, _ = librosa.pyin(
-            seg_audio, fmin=librosa.note_to_hz("C2"), fmax=librosa.note_to_hz("C7"), sr=sr
+            seg_audio, fmin=librosa.note_to_hz("C2"), fmax=500.0, sr=sr
         )
-        # F2: Filter NaN and get median of voiced frames
         voiced_f0 = f0_arr[voiced] if voiced is not None else np.array([])
         if len(voiced_f0) == 0:
+            continue
+        # Reject segments where pitch detection is unreliable (<50% voiced)
+        voiced_pct = len(voiced_f0) / len(f0_arr) if len(f0_arr) > 0 else 0
+        if voiced_pct < 0.5:
             continue
         freq = float(np.median(voiced_f0))
         if freq < 50 or freq > 2000 or np.isnan(freq):
@@ -179,7 +202,7 @@ def _extract_notes(audio_np: np.ndarray, sr: int = 44100, max_notes: int = 3, ma
         print("[_extract_notes] WARNING: Pitch detection failed on all segments, using 1s chunk")
         chunk = audio_np[:min(len(audio_np), sr)]
         f0 = _detect_pitch(chunk, sr)
-        return [(chunk, f0, len(chunk) / sr)]
+        return [(chunk, f0, len(chunk) / sr)], [{"onset": 0, "freq": f0, "duration": len(chunk) / sr}]
 
     # Filter out likely sub-harmonics: if most notes are above 150Hz, remove notes below 100Hz
     freqs = [n["freq"] for n in notes]
@@ -189,11 +212,14 @@ def _extract_notes(audio_np: np.ndarray, sr: int = 44100, max_notes: int = 3, ma
     if len(notes) == 0:
         chunk = audio_np[:min(len(audio_np), sr)]
         f0 = _detect_pitch(chunk, sr)
-        return [(chunk, f0, len(chunk) / sr)]
+        return [(chunk, f0, len(chunk) / sr)], [{"onset": 0, "freq": f0, "duration": len(chunk) / sr}]
 
-    # Select up to max_notes representative notes (one per unique semitone, prefer longer notes)
+    # Select up to max_notes representative notes (one per unique semitone, prefer loudest)
+    # Loudest notes are most likely real signal, not Demucs bleed artifacts
+    for nd in notes:
+        nd["rms"] = float(np.sqrt(np.mean(nd["audio"] ** 2)))
     seen_semitones = {}
-    for nd in sorted(notes, key=lambda n: n["duration"], reverse=True):  # longest first
+    for nd in sorted(notes, key=lambda n: n["rms"], reverse=True):  # loudest first
         semitone = round(12 * np.log2(nd["freq"] / 440.0))
         if semitone not in seen_semitones and len(seen_semitones) < max_notes:
             seen_semitones[semitone] = nd
@@ -203,18 +229,21 @@ def _extract_notes(audio_np: np.ndarray, sr: int = 44100, max_notes: int = 3, ma
         for nd in seen_semitones.values()
     ]
 
+    # Also build full note list with onsets for sequence playback
+    all_notes_with_onsets = [
+        {"onset": nd["onset"], "freq": nd["freq"], "duration": nd["duration"]}
+        for nd in notes
+    ]
+
     print(f"[_extract_notes] Extracted {len(notes)} notes, selected {len(representative)} representatives "
           f"at pitches: {[f'{r[1]:.0f}Hz' for r in representative]}")
-    return representative
+    return representative, all_notes_with_onsets
 
 
 def _detect_pitch(audio_np: np.ndarray, sr: int = 44100) -> float:
-    """Detect fundamental frequency using librosa.pyin."""
+    """Detect fundamental frequency using pyin with fmax=500Hz."""
     f0, voiced_flag, _ = librosa.pyin(
-        audio_np,
-        fmin=librosa.note_to_hz("C2"),
-        fmax=librosa.note_to_hz("C7"),
-        sr=sr,
+        audio_np, fmin=librosa.note_to_hz("C2"), fmax=500.0, sr=sr,
     )
     voiced_f0 = f0[voiced_flag]
     if len(voiced_f0) > 0:
@@ -222,12 +251,12 @@ def _detect_pitch(audio_np: np.ndarray, sr: int = 44100) -> float:
     return 440.0
 
 
-# Module-level globals for multiprocessing workers (set before pool.map)
+# Module-level globals for multiprocessing workers
 _WORKER_TARGET_NOTES = []
 
 
 def _evaluate_single(params_np):
-    """Evaluate a single candidate. Runs in a worker process."""
+    """Evaluate a single candidate in a worker process."""
     synth = SynthPatch()
     loss_fn = get_loss("matching")
     params = torch.tensor(params_np, dtype=torch.float32)
@@ -242,7 +271,7 @@ def _evaluate_single(params_np):
 
 
 def _init_worker(target_notes):
-    """Initializer for pool workers: set the shared target notes."""
+    """Initializer for pool workers."""
     global _WORKER_TARGET_NOTES
     _WORKER_TARGET_NOTES = target_notes
 
@@ -255,15 +284,10 @@ def _run_cmaes(
     loop: asyncio.AbstractEventLoop,
     note_data_for_result: Optional[list] = None,
 ):
-    """
-    Run CMA-ES optimization (blocking) with multiprocessing.
-    Pushes progress to asyncio.Queue.
-
-    target_notes: list of (audio_np, freq, duration) tuples
-    """
+    """Run CMA-ES with CPU multiprocessing."""
     sigma0 = 0.3
     n_cores = max(1, multiprocessing.cpu_count() - 1)
-    popsize = max(16, n_cores * 2)  # at least 2 candidates per core
+    popsize = max(16, n_cores * 2)
 
     es = cma.CMAEvolutionStrategy(x0, sigma0, {
         "bounds": [[0] * N_PARAMS, [1] * N_PARAMS],
@@ -288,7 +312,6 @@ def _run_cmaes(
             if gen_best < best_loss:
                 best_loss = gen_best
 
-            # Push progress every generation
             elapsed = time.time() - t0
             msg = {
                 "type": "progress",
@@ -362,63 +385,109 @@ async def preset_best():
 
 @app.post("/api/match-single")
 async def match_single(
-    file: UploadFile = File(...),
-    n_evals: int = Form(20000),
+    file: UploadFile = File(None),
+    n_evals: int = Form(10000),
     stem_job_id: Optional[str] = Form(None),
     stem_name: Optional[str] = Form(None),
+    note_job_id: Optional[str] = Form(None),
+    selected_note: Optional[int] = Form(None),
 ):
-    # If stem params provided, load stem WAV instead of uploaded file
-    if stem_job_id and stem_name and stem_job_id in stem_dirs:
-        sep_dir = os.path.join(stem_dirs[stem_job_id]["path"], "separated", "htdemucs")
-        subdirs = [d for d in os.listdir(sep_dir) if os.path.isdir(os.path.join(sep_dir, d))] if os.path.exists(sep_dir) else []
-        stem_path = os.path.join(sep_dir, subdirs[0], f"{stem_name}.wav") if subdirs else None
-        if stem_path and os.path.exists(stem_path):
-            audio_np, sr = sf.read(stem_path)
-            if audio_np.ndim > 1:
-                audio_np = audio_np.mean(axis=1)
-            if sr != 44100:
-                audio_np = librosa.resample(audio_np, orig_sr=sr, target_sr=44100)
-                sr = 44100
+    # If pre-extracted notes exist, use them directly (skip re-extraction)
+    if note_job_id and note_job_id in note_jobs:
+        target_notes = note_jobs[note_job_id]["target_notes"]
+        # If user selected a specific note, optimize on only that one
+        if selected_note is not None and 0 <= selected_note < len(target_notes):
+            target_notes = [target_notes[selected_note]]
+            print(f"[match-single] Using SINGLE selected note {selected_note} from {note_job_id}")
+        else:
+            print(f"[match-single] Using all {len(target_notes)} notes from {note_job_id}")
+    else:
+        # Load audio from stem or upload
+        if stem_job_id and stem_name and stem_job_id in stem_dirs:
+            sep_base = os.path.join(stem_dirs[stem_job_id]["path"], "separated")
+            model_dirs = [d for d in os.listdir(sep_base) if os.path.isdir(os.path.join(sep_base, d))] if os.path.exists(sep_base) else []
+            sep_dir = os.path.join(sep_base, model_dirs[0]) if model_dirs else sep_base
+            subdirs = [d for d in os.listdir(sep_dir) if os.path.isdir(os.path.join(sep_dir, d))] if os.path.exists(sep_dir) else []
+            stem_path = os.path.join(sep_dir, subdirs[0], f"{stem_name}.wav") if subdirs else None
+            if stem_path and os.path.exists(stem_path):
+                audio_np, sr = sf.read(stem_path)
+                if audio_np.ndim > 1:
+                    audio_np = audio_np.mean(axis=1)
+                if sr != 44100:
+                    audio_np = librosa.resample(audio_np, orig_sr=sr, target_sr=44100)
+                    sr = 44100
+            else:
+                audio_np, sr = await _load_audio_from_upload(file)
         else:
             audio_np, sr = await _load_audio_from_upload(file)
-    else:
-        audio_np, sr = await _load_audio_from_upload(file)
 
-    # Cap audio to 10 seconds for note extraction (not 5s - need enough for onset detection)
-    max_samples = 10 * sr
-    if len(audio_np) > max_samples:
-        audio_np = audio_np[:max_samples]
+        if len(audio_np) > 10 * 44100:
+            audio_np = audio_np[:10 * 44100]
 
-    # Extract individual notes via onset detection + pitch tracking
-    # This is multi-pitch fitting as described in the paper (Section 2.3)
-    target_notes = _extract_notes(audio_np, sr, max_notes=3, max_note_dur=0.5)
+        target_notes, _ = await asyncio.to_thread(
+            _extract_notes, audio_np, 44100, 5, 0.2
+        )
 
     # Spectral init from first representative note
-    init_15 = spectral_init(target_notes[0][0], sr)
+    init_15 = await asyncio.to_thread(spectral_init, target_notes[0][0], 44100)
     x0 = _pad_spectral_init(init_15).numpy()
 
     job_id = str(uuid.uuid4())
     queue: asyncio.Queue = asyncio.Queue()
-    jobs[job_id] = {"queue": queue, "status": "running"}
+    jobs[job_id] = {"queue": queue, "status": "queued"}
 
     loop = asyncio.get_event_loop()
     asyncio.ensure_future(
-        asyncio.to_thread(_run_cmaes, target_notes, x0, n_evals, queue, loop, None)
+        _queued_cmaes(job_id, target_notes, x0, n_evals, queue, loop, None)
     )
 
     return {"job_id": job_id, "status": "started"}
 
 
+async def _queued_cmaes(job_id, target_notes, x0, n_evals, queue, loop, note_data):
+    """Run CMA-ES with queue management. Only one job runs at a time."""
+    _job_queue.append(job_id)
+
+    lock = _get_cmaes_lock()
+    # If lock is held, send queue position updates while waiting
+    if lock.locked():
+        jobs[job_id]["status"] = "queued"
+        while lock.locked():
+            pos = _job_queue.index(job_id) if job_id in _job_queue else 0
+            queue.put_nowait({
+                "type": "queued",
+                "position": pos,
+                "message": f"Position {pos} in queue" if pos > 0 else "Starting soon..."
+            })
+            await asyncio.sleep(3)
+
+    # Acquire lock (blocks if another job just started between our check and acquire)
+    async with lock:
+        jobs[job_id]["status"] = "running"
+        try:
+            _job_queue.remove(job_id)
+        except ValueError:
+            pass
+        try:
+            await asyncio.to_thread(_run_cmaes, target_notes, x0, n_evals, queue, loop, note_data)
+        except Exception as e:
+            # If CMA-ES crashes, send error and release lock for next job
+            queue.put_nowait({"type": "error", "message": str(e)})
+            print(f"[_queued_cmaes] Job {job_id} failed: {e}")
+
+
 @app.post("/api/match-sequence")
 async def match_sequence(
     file: UploadFile = File(...),
-    n_evals: int = Form(20000),
+    n_evals: int = Form(10000),
     stem_job_id: Optional[str] = Form(None),
     stem_name: Optional[str] = Form(None),
 ):
     # If stem params provided, load stem WAV instead of uploaded file
     if stem_job_id and stem_name and stem_job_id in stem_dirs:
-        sep_dir = os.path.join(stem_dirs[stem_job_id]["path"], "separated", "htdemucs")
+        sep_base = os.path.join(stem_dirs[stem_job_id]["path"], "separated")
+        model_dirs = [d for d in os.listdir(sep_base) if os.path.isdir(os.path.join(sep_base, d))] if os.path.exists(sep_base) else []
+        sep_dir = os.path.join(sep_base, model_dirs[0]) if model_dirs else sep_base
         subdirs = [d for d in os.listdir(sep_dir) if os.path.isdir(os.path.join(sep_dir, d))] if os.path.exists(sep_dir) else []
         stem_path = os.path.join(sep_dir, subdirs[0], f"{stem_name}.wav") if subdirs else None
         if stem_path and os.path.exists(stem_path):
@@ -496,11 +565,11 @@ async def match_sequence(
 
     job_id = str(uuid.uuid4())
     queue: asyncio.Queue = asyncio.Queue()
-    jobs[job_id] = {"queue": queue, "status": "running"}
+    jobs[job_id] = {"queue": queue, "status": "queued"}
 
     loop = asyncio.get_event_loop()
     asyncio.ensure_future(
-        asyncio.to_thread(_run_cmaes, representative, x0, n_evals, queue, loop, note_data)
+        _queued_cmaes(job_id, representative, x0, n_evals, queue, loop, note_data)
     )
 
     return {"job_id": job_id, "status": "started"}
@@ -537,6 +606,57 @@ async def ws_progress(websocket: WebSocket, job_id: str):
             except Exception:
                 pass
         asyncio.ensure_future(drain())
+
+
+@app.post("/api/render-sequence")
+async def render_sequence(body: dict):
+    """Render matched synth at all detected note onsets into one WAV."""
+    params = body.get("params", [0.5] * N_PARAMS)
+    note_job_id = body.get("note_job_id")
+
+    if not note_job_id or note_job_id not in note_jobs:
+        return JSONResponse({"error": "Unknown note job"}, status_code=404)
+
+    all_notes = note_jobs[note_job_id].get("all_notes", [])
+    if not all_notes:
+        return JSONResponse({"error": "No notes available"}, status_code=400)
+
+    def do_render():
+        synth = SynthPatch()
+        params_t = torch.tensor(params, dtype=torch.float32)
+
+        # Match the original stem duration (or use note extent + padding)
+        requested_dur = body.get("total_duration", 0)
+        max_end = max(n["onset"] + n["duration"] + 0.3 for n in all_notes)
+        total_dur = max(max_end, float(requested_dur))
+        total_samples = int(total_dur * 44100)
+        output = np.zeros(total_samples, dtype=np.float32)
+
+        for note in all_notes:
+            dur = note["duration"] + 0.2  # add release tail
+            audio = synth.render(params_t, f0_hz=note["freq"], duration=dur, note_duration=note["duration"])
+            audio_np = audio.detach().numpy().squeeze()
+            pos = int(note["onset"] * 44100)
+            end = pos + len(audio_np)
+            if end <= total_samples:
+                output[pos:end] += audio_np
+            else:
+                trim = total_samples - pos
+                if trim > 0:
+                    output[pos:pos + trim] += audio_np[:trim]
+
+        # Normalize
+        peak = np.max(np.abs(output))
+        if peak > 0.01:
+            output = output / peak * 0.9
+
+        buf = io.BytesIO()
+        sf.write(buf, output, 44100, format="WAV")
+        buf.seek(0)
+        return buf.read()
+
+    wav_bytes = await asyncio.to_thread(do_render)
+    return Response(content=wav_bytes, media_type="audio/wav")
 
 
 @app.post("/api/export/vital")
@@ -597,12 +717,119 @@ async def preview_proxy(url: str = ""):
 
 
 # ---------------------------------------------------------------------------
+# Note extraction preview
+# ---------------------------------------------------------------------------
+
+# Store extracted notes: job_id -> {"path": dir, "notes": [{freq, dur, file}], "target_notes": [...]}
+note_jobs: Dict[str, Dict] = {}
+
+
+@app.post("/api/extract-notes")
+async def extract_notes_endpoint(
+    stem_job_id: str = Form(...),
+    stem_name: str = Form(...),
+):
+    """Extract notes from a separated stem. Returns playable WAV URLs + pitch info."""
+    if stem_job_id not in stem_dirs:
+        return JSONResponse({"error": "Unknown stem job"}, status_code=404)
+
+    # Load the stem audio
+    sep_base = os.path.join(stem_dirs[stem_job_id]["path"], "separated")
+    model_dirs = [d for d in os.listdir(sep_base) if os.path.isdir(os.path.join(sep_base, d))] if os.path.exists(sep_base) else []
+    if not model_dirs:
+        return JSONResponse({"error": "Stems not found"}, status_code=404)
+    sep_dir = os.path.join(sep_base, model_dirs[0])
+    subdirs = [d for d in os.listdir(sep_dir) if os.path.isdir(os.path.join(sep_dir, d))]
+    if not subdirs:
+        return JSONResponse({"error": "Stems not found"}, status_code=404)
+    stem_path = os.path.join(sep_dir, subdirs[0], f"{stem_name}.wav")
+    if not os.path.exists(stem_path):
+        return JSONResponse({"error": f"Stem {stem_name} not found"}, status_code=404)
+
+    audio_np, sr = sf.read(stem_path)
+    if audio_np.ndim > 1:
+        audio_np = audio_np.mean(axis=1)
+    if sr != 44100:
+        audio_np = librosa.resample(audio_np, orig_sr=sr, target_sr=44100)
+        sr = 44100
+
+    # Cap to 10s
+    analyzed_duration = min(len(audio_np) / sr, 10.0)
+    if len(audio_np) > 10 * sr:
+        audio_np = audio_np[:10 * sr]
+
+    # Extract notes in thread
+    target_notes, all_notes_with_onsets = await asyncio.to_thread(
+        _extract_notes, audio_np.astype(np.float32), sr, 5, 0.2
+    )
+
+    # Save each representative note as a WAV file
+    note_job_id = str(uuid.uuid4())
+    notes_dir = tempfile.mkdtemp(prefix="instrumental_notes_")
+    note_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    note_info = []
+
+    for i, (seg, freq, dur) in enumerate(target_notes):
+        wav_path = os.path.join(notes_dir, f"note_{i}.wav")
+        sf.write(wav_path, seg.astype(np.float32), sr)
+
+        midi = round(12 * np.log2(freq / 440.0) + 69)
+        name = note_names[midi % 12] + str(midi // 12 - 1)
+        rms = float(np.sqrt(np.mean(seg ** 2)))
+
+        note_info.append({
+            "index": i,
+            "freq": round(freq, 1),
+            "name": name,
+            "duration": round(dur, 3),
+            "rms": round(rms, 4),
+            "url": f"/api/note/{note_job_id}/{i}.wav",
+        })
+
+    # Add note names to all_notes for sequence playback
+    for nd in all_notes_with_onsets:
+        midi = round(12 * np.log2(nd["freq"] / 440.0) + 69)
+        nd["name"] = note_names[midi % 12] + str(midi // 12 - 1)
+        nd["midi"] = midi
+
+    note_jobs[note_job_id] = {
+        "path": notes_dir,
+        "notes": note_info,
+        "target_notes": target_notes,
+        "all_notes": all_notes_with_onsets,  # full sequence with onsets
+        "stem_job_id": stem_job_id,
+        "stem_name": stem_name,
+        "created": time.time(),
+    }
+
+    is_fallback = len(target_notes) == 1 and target_notes[0][2] > 0.5
+    return {
+        "note_job_id": note_job_id,
+        "notes": note_info,
+        "all_notes": all_notes_with_onsets,  # for sequence playback
+        "analyzed_duration": round(analyzed_duration, 2),
+        "fallback": is_fallback,
+    }
+
+
+@app.get("/api/note/{note_job_id}/{note_index}.wav")
+async def get_note_wav(note_job_id: str, note_index: int):
+    """Serve an extracted note WAV file."""
+    if note_job_id not in note_jobs:
+        return JSONResponse({"error": "Unknown note job"}, status_code=404)
+    wav_path = os.path.join(note_jobs[note_job_id]["path"], f"note_{note_index}.wav")
+    if not os.path.exists(wav_path):
+        return JSONResponse({"error": "Note not found"}, status_code=404)
+    return FileResponse(wav_path, media_type="audio/wav")
+
+
+# ---------------------------------------------------------------------------
 # Demucs source separation
 # ---------------------------------------------------------------------------
 
 @app.post("/api/separate")
-async def separate_stems(file: UploadFile = File(...)):
-    """Run Demucs htdemucs source separation on uploaded audio."""
+async def separate_stems(file: UploadFile = File(...), stem_count: int = Form(4)):
+    """Run Demucs source separation. stem_count=4 (htdemucs_ft) or 6 (htdemucs_6s)."""
     job_id = str(uuid.uuid4())
     tmp_dir = tempfile.mkdtemp(prefix="instrumental_")
     # Preserve original extension so Demucs/ffmpeg handles format correctly
@@ -613,32 +840,43 @@ async def separate_stems(file: UploadFile = File(...)):
     with open(input_path, "wb") as f:
         f.write(audio_bytes)
 
+    model_name = "htdemucs_6s" if stem_count == 6 else "htdemucs_ft"
+    stem_names = ("vocals", "drums", "bass", "other", "guitar", "piano") if stem_count == 6 else ("vocals", "drums", "bass", "other")
+
     def run_demucs():
         out_dir = os.path.join(tmp_dir, "separated")
         os.makedirs(out_dir, exist_ok=True)
-        subprocess.run(
+        result = subprocess.run(
             [
                 sys.executable, "-m", "demucs",
-                "-n", "htdemucs",
-                "-d", "cpu",
+                "-n", model_name,
+                "-d", "mps",
                 "--float32",
                 "-o", out_dir,
                 input_path,
             ],
-            check=True,
             capture_output=True,
+            text=True,
         )
-        # Output lands in: {out_dir}/htdemucs/{input_basename}/{stem}.wav
+        if result.returncode != 0:
+            print(f"[Demucs] STDERR: {result.stderr[:500]}")
+            raise RuntimeError(f"Demucs failed: {result.stderr[:200]}")
+        # Find output directory dynamically
+        model_dirs = [d for d in os.listdir(out_dir) if os.path.isdir(os.path.join(out_dir, d))]
+        if not model_dirs:
+            raise RuntimeError("Demucs produced no output directory")
         input_basename = os.path.splitext(os.path.basename(input_path))[0]
-        stems_dir = os.path.join(out_dir, "htdemucs", input_basename)
+        stems_dir = os.path.join(out_dir, model_dirs[0], input_basename)
         stems = {}
-        for stem_name in ("vocals", "drums", "bass", "other"):
-            stem_path = os.path.join(stems_dir, f"{stem_name}.wav")
+        for sn in stem_names:
+            stem_path = os.path.join(stems_dir, f"{sn}.wav")
             if os.path.exists(stem_path):
-                stems[stem_name] = f"/api/stem/{job_id}/{stem_name}.wav"
+                stems[sn] = f"/api/stem/{job_id}/{sn}.wav"
         return stems
 
-    stems = await asyncio.to_thread(run_demucs)
+    # Lock: only one Demucs runs at a time to prevent OOM (~3GB RAM each)
+    async with _get_demucs_lock():
+        stems = await asyncio.to_thread(run_demucs)
     stem_dirs[job_id] = {"path": tmp_dir, "created": time.time()}
     return {"job_id": job_id, "stems": stems}
 
@@ -648,9 +886,11 @@ async def get_stem(job_id: str, stem_name: str):
     """Serve a separated stem WAV file."""
     if job_id not in stem_dirs:
         return JSONResponse({"error": "Unknown job"}, status_code=404)
-    if stem_name not in ("vocals", "drums", "bass", "other"):
+    if stem_name not in ("vocals", "drums", "bass", "other", "guitar", "piano"):
         return JSONResponse({"error": "Invalid stem"}, status_code=400)
-    sep_dir = os.path.join(stem_dirs[job_id]["path"], "separated", "htdemucs")
+    sep_base = os.path.join(stem_dirs[job_id]["path"], "separated")
+    model_dirs = [d for d in os.listdir(sep_base) if os.path.isdir(os.path.join(sep_base, d))] if os.path.exists(sep_base) else []
+    sep_dir = os.path.join(sep_base, model_dirs[0]) if model_dirs else sep_base
     subdirs = [d for d in os.listdir(sep_dir) if os.path.isdir(os.path.join(sep_dir, d))] if os.path.exists(sep_dir) else []
     if not subdirs:
         return JSONResponse({"error": "Stems not found"}, status_code=404)
@@ -683,6 +923,17 @@ async def _start_cleanup():
 
 
 # --- Static files (must be last so it doesn't shadow API routes) ---
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if request.url.path.endswith(('.js', '.css', '.html')):
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return response
+
+app.add_middleware(NoCacheMiddleware)
 app.mount("/", StaticFiles(directory=APP_DIR, html=True), name="static")
 
 

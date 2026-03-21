@@ -2,14 +2,16 @@
 Export INSTRUMENTAL's 28 synth parameters to a Vital .vital preset file.
 
 Uses the init.vital template from Syntheon as a base, then overwrites
-the parameters we control. This ensures wavetable data and other Vital
-internals are valid.
+the parameters we control and generates proper saw/square/sine wavetables.
 """
 
 import json
 import math
 import os
 import copy
+import struct
+import base64
+import numpy as np
 
 # Path to the Vital template preset (ships with Syntheon)
 TEMPLATE_PATH = os.path.join(
@@ -29,16 +31,58 @@ def hz_to_midi_note(hz):
     return 12.0 * math.log2(hz / 440.0) + 69.0
 
 
+def _encode_wavetable(samples):
+    """Encode a 2048-sample waveform as base64 float32 (Vital format)."""
+    data = struct.pack(f'{len(samples)}f', *samples)
+    return base64.b64encode(data).decode('ascii')
+
+
+def _make_saw_wavetable():
+    """Generate a sawtooth wavetable (2048 samples)."""
+    t = np.linspace(0, 1, 2048, endpoint=False, dtype=np.float32)
+    wave = 2.0 * t - 1.0  # -1 to +1 sawtooth
+    return _encode_wavetable(wave)
+
+
+def _make_square_wavetable(pulse_width=0.5):
+    """Generate a square/pulse wavetable (2048 samples)."""
+    t = np.linspace(0, 1, 2048, endpoint=False, dtype=np.float32)
+    wave = np.where(t < pulse_width, 1.0, -1.0).astype(np.float32)
+    return _encode_wavetable(wave)
+
+
+def _make_sine_wavetable():
+    """Generate a sine wavetable (2048 samples)."""
+    t = np.linspace(0, 2 * np.pi, 2048, endpoint=False, dtype=np.float32)
+    wave = np.sin(t).astype(np.float32)
+    return _encode_wavetable(wave)
+
+
+def _build_wavetable_entry(name, wave_data):
+    """Build a single Vital wavetable entry with proper structure."""
+    return {
+        "name": name,
+        "full_normalize": False,
+        "remove_all_dc": False,
+        "groups": [
+            {
+                "components": [
+                    {
+                        "type": "Wave Source",
+                        "interpolation": 1,
+                        "keyframes": [
+                            {"position": 0, "wave_data": wave_data}
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+
+
 def params_to_vital(params_normalized, param_defs):
     """
     Convert INSTRUMENTAL's 28 normalized [0,1] params to a Vital preset dict.
-
-    Args:
-        params_normalized: list of 28 floats in [0,1]
-        param_defs: list of {"name": str, "lo": float, "hi": float}
-
-    Returns:
-        dict: Complete Vital preset ready to be serialized as JSON
     """
     # Denormalize params to physical ranges
     p = {}
@@ -52,20 +96,22 @@ def params_to_vital(params_normalized, param_defs):
     s = preset["settings"]
 
     # --- Oscillator levels ---
-    # Osc 1 = saw, Osc 2 = square/pulse, Osc 3 = sine
     s["osc_1_on"] = 1.0 if p["saw_mix"] > 0.01 else 0.0
     s["osc_1_level"] = p["saw_mix"]
-
     s["osc_2_on"] = 1.0 if p["square_mix"] > 0.01 else 0.0
     s["osc_2_level"] = p["square_mix"]
-
     s["osc_3_on"] = 1.0 if p["sine_mix"] > 0.01 else 0.0
     s["osc_3_level"] = p["sine_mix"]
 
-    # --- Noise (via sample section or add to osc levels) ---
+    # --- Route all oscillators to Filter 1 ---
+    s["osc_1_destination"] = 0.0  # Filter 1
+    s["osc_2_destination"] = 0.0  # Filter 1 (was 1.0 = Filter 2 which is off)
+    s["osc_3_destination"] = 0.0  # Filter 1 (was 3.0 = Direct Out)
+
+    # --- Noise ---
     noise_total = p["noise_mix"] + p["noise_floor"]
     s["sample_on"] = 1.0 if noise_total > 0.01 else 0.0
-    s["sample_level"] = min(1.0, noise_total * 2.0)  # scale 0-0.5 to 0-1
+    s["sample_level"] = min(1.0, noise_total * 2.0)
 
     # --- Detune ---
     s["osc_1_transpose"] = p["detune"]
@@ -76,25 +122,24 @@ def params_to_vital(params_normalized, param_defs):
     n_voices = max(1, round(p["unison_voices"]))
     for osc in ["osc_1", "osc_2", "osc_3"]:
         s[f"{osc}_unison_voices"] = float(n_voices)
-        s[f"{osc}_unison_detune"] = p["unison_spread"] * 20.0  # Vital uses larger scale
+        s[f"{osc}_unison_detune"] = p["unison_spread"] * 20.0
 
     # --- Pulse width (osc 2 wave frame) ---
     s["osc_2_wave_frame"] = p["pulse_width"]
 
     # --- Filter ---
     s["filter_1_on"] = 1.0
-    s["filter_1_cutoff"] = hz_to_midi_note(p["filter_cutoff"])
+    s["filter_1_cutoff"] = min(128.0, hz_to_midi_note(p["filter_cutoff"]))  # Clamp to Vital's range
     s["filter_1_resonance"] = p["filter_resonance"]
     s["filter_1_mix"] = 1.0
 
-    # Filter slope -> model (0=analog 12dB, 1=analog 24dB, 2=dirty, etc.)
     slope = p["filter_slope"]
     if slope < 18:
-        s["filter_1_model"] = 0.0  # 12 dB/oct
+        s["filter_1_model"] = 0.0
     elif slope < 36:
-        s["filter_1_model"] = 1.0  # 24 dB/oct
+        s["filter_1_model"] = 1.0
     else:
-        s["filter_1_model"] = 6.0  # Steep
+        s["filter_1_model"] = 6.0
 
     # --- Amplitude envelope (env 1) ---
     s["env_1_attack"] = p["attack"]
@@ -108,21 +153,20 @@ def params_to_vital(params_normalized, param_defs):
     s["env_2_sustain"] = p["filter_sustain"]
     s["env_2_release"] = p["filter_release"]
 
-    # --- Filter envelope amount (modulation routing) ---
-    # Vital uses a modulations array for routing
+    # --- Filter envelope amount ---
     filter_env_amount = p["filter_env"]
     if abs(filter_env_amount) > 0.01:
         mod_entry = {
             "source": "env_2",
             "destination": "filter_1_cutoff",
-            "amount": filter_env_amount * 0.5  # scale down, Vital mods are sensitive
+            "amount": filter_env_amount * 0.5
         }
         if "modulations" not in preset:
             preset["modulations"] = []
         preset["modulations"].append(mod_entry)
 
-    # --- Master gain ---
-    s["volume"] = p["gain"]
+    # --- Master gain (boost for usability) ---
+    s["volume"] = min(1.0, p["gain"] * 2.0)  # Boost: our 0-1 range maps to 0-2x, clamped
 
     # --- Reverb ---
     s["reverb_on"] = 1.0 if p["reverb_mix"] > 0.01 else 0.0
@@ -135,6 +179,13 @@ def params_to_vital(params_normalized, param_defs):
     s["eq_low_gain"] = p["eq1_gain"]
     s["eq_high_cutoff"] = hz_to_midi_note(p["eq2_freq"])
     s["eq_high_gain"] = p["eq2_gain"]
+
+    # --- Generate proper wavetables (saw, square, sine) ---
+    s["wavetables"] = [
+        _build_wavetable_entry("Saw", _make_saw_wavetable()),
+        _build_wavetable_entry("Square", _make_square_wavetable(p.get("pulse_width", 0.5))),
+        _build_wavetable_entry("Sine", _make_sine_wavetable()),
+    ]
 
     # --- Metadata ---
     preset["preset_name"] = "INSTRUMENTAL Match"

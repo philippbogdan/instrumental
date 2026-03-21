@@ -20,7 +20,7 @@ PARAM_DEFS = [
     ("square_mix", 0.0, 1.0),
     ("sine_mix", 0.0, 1.0),
     ("noise_mix", 0.0, 0.5),
-    ("detune", -2.0, 2.0),           # Constrained to ±2 semitones (was ±24)
+    ("detune", -24.0, 24.0),
     ("filter_cutoff", 200.0, 16000.0),
     ("filter_resonance", 0.0, 0.95),
     ("attack", 0.001, 0.5),
@@ -40,20 +40,24 @@ PARAM_DEFS = [
     ("filter_release", 0.001, 1.0),
     ("pulse_width", 0.1, 0.9),
     ("filter_slope", 4.0, 48.0),
+    ("eq1_freq", 500.0, 4500.0),
+    ("eq1_gain", -6.0, 6.0),
+    ("eq2_freq", 2000.0, 10000.0),
+    ("eq2_gain", -6.0, 6.0),
 ]
 
 N_PARAMS = len(PARAM_DEFS)
 
 # Pre-compute param ranges as tensors for fast denormalization
-_LO = torch.tensor([float(lo) for name, lo, hi in PARAM_DEFS])
-_HI = torch.tensor([float(hi) for name, lo, hi in PARAM_DEFS])
+_LO = torch.tensor([float(lo) for name, lo, hi in PARAM_DEFS], dtype=torch.float32)
+_HI = torch.tensor([float(hi) for name, lo, hi in PARAM_DEFS], dtype=torch.float32)
 _RANGE = _HI - _LO
 
 # Fixed unison voice offsets: [-1, -0.5, 0, 0.5, 1] normalized
 _VOICE_OFFSETS = torch.linspace(-1.0, 1.0, N_VOICES)
 
 # Fixed reverb delay multipliers
-_REVERB_DELAYS = torch.tensor([0.3, 0.5, 0.7, 1.1, 1.4, 1.9])
+_REVERB_DELAYS = torch.tensor([0.3, 0.5, 0.7, 1.1, 1.4, 1.9], dtype=torch.float32)
 
 
 def _denorm_batch(params: torch.Tensor) -> torch.Tensor:
@@ -89,7 +93,7 @@ def _batched_adsr(n_samples: int, attack, decay, sustain, release,
     env = torch.where(t < a, attack_env, decay_env)
 
     if note_duration is not None:
-        nd = torch.tensor(note_duration, device=device)
+        nd = torch.tensor(float(note_duration), device=device, dtype=torch.float32)
         rel_env = env * (1.0 - ((t - nd) / r).clamp(0.0, 1.0))
         env = torch.where(t > nd, rel_env, env)
 
@@ -183,15 +187,18 @@ class SynthPatchGPU:
         if params_tensor.dim() == 1:
             params_tensor = params_tensor.unsqueeze(0)
 
+        # Ensure float32 throughout (MPS doesn't support float64)
+        params_tensor = params_tensor.float()
         B = params_tensor.shape[0]
         device = params_tensor.device
         n_samples = int(duration * self.sr)
 
-        # Denormalize all params at once: (B, 24) → (B, 24) real values
+        # Denormalize all params at once: (B, 28) → (B, 28) real values
         p = _denorm_batch(params_tensor)
 
-        # Time axis: (N,)
-        t = torch.linspace(0, duration, n_samples, device=device)
+        # Time axis: (N,) - explicit float32
+        t = torch.linspace(0, float(duration), n_samples, device=device, dtype=torch.float32)
+        f0 = torch.tensor(float(f0_hz), device=device, dtype=torch.float32)
 
         # ─── OSCILLATORS: fully batched across candidates AND voices ───
 
@@ -205,7 +212,7 @@ class SynthPatchGPU:
         # Phase for all candidates × all voices × all samples: (B, V, N)
         # phase = (2π × f0 × ratio × t) mod 2π
         # f0 is scalar, ratios is (B, V), t is (N,)
-        phase = (2.0 * math.pi * f0_hz * voice_ratios.unsqueeze(2) * t.unsqueeze(0).unsqueeze(0))
+        phase = (2.0 * math.pi * f0 * voice_ratios.unsqueeze(2) * t.unsqueeze(0).unsqueeze(0))
         phase = phase % (2.0 * math.pi)  # (B, V, N)
 
         # Waveforms: all (B, V, N)
@@ -259,6 +266,18 @@ class SynthPatchGPU:
             _get_param(p, "filter_resonance"),
             _get_param(p, "filter_slope")
         )
+
+        # ─── PARAMETRIC EQ (2 bands) ───
+        N = signal.shape[-1]
+        freqs = torch.fft.rfftfreq(N, d=1.0 / self.sr, device=device)  # (F,)
+        X = torch.fft.rfft(signal)  # (B, F)
+        for freq_key, gain_key in [("eq1_freq", "eq1_gain"), ("eq2_freq", "eq2_gain")]:
+            freq = _get_param(p, freq_key).unsqueeze(1)   # (B, 1)
+            gain = _get_param(p, gain_key).unsqueeze(1)    # (B, 1)
+            Q = 2.0
+            bell = (gain / 6.0) * torch.exp(-0.5 * ((freqs.unsqueeze(0) - freq) / (freq / Q + 1e-8)) ** 2)  # (B, F)
+            X = X * (1.0 + bell)
+        signal = torch.fft.irfft(X, n=N)  # (B, N)
 
         # ─── AMPLITUDE ENVELOPE ───
         amp_env = _batched_adsr(

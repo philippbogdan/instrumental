@@ -32,6 +32,10 @@
         <p class="drop-hint">MP3 or WAV</p>
       </div>
       <input type="file" id="fileInput" accept=".mp3,.wav,.m4a" hidden>
+      <div class="stem-toggle">
+        <button id="stem4Btn" class="mode-btn active">4 Stems</button>
+        <button id="stem6Btn" class="mode-btn">6 Stems</button>
+      </div>
       <div id="fileInfo" class="file-info hidden">
         <span id="fileName"></span>
         <button id="clearFile" class="clear-btn">x</button>
@@ -59,7 +63,7 @@
       </div>
       <div class="progress-stats">
         <span id="progressPhase" class="progress-phase"></span>
-        <span id="evalCount">0 / 20,000</span>
+        <span id="evalCount">0 / 10,000</span>
         <span id="currentLoss">Loss: --</span>
         <span id="elapsedTime">0s</span>
       </div>
@@ -76,12 +80,12 @@
     </section>
   </main>
 
-  <script src="synth.js"></script>
-  <script src="waveform.js"></script>
-  <script src="keyboard.js"></script>
-  <script src="daw.js"></script>
-  <script src="player.js"></script>
-  <script src="stems.js"></script>
-  <script src="app.js"></script>
+  <script src="synth.js?v=14"></script>
+  <script src="waveform.js?v=14"></script>
+  <script src="keyboard.js?v=14"></script>
+  <script src="daw.js?v=14"></script>
+  <script src="player.js?v=14"></script>
+  <script src="stems.js?v=14"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>

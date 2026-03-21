@@ -15,6 +15,10 @@ document.addEventListener('DOMContentLoaded', () => {
   let player = null;
   let stemDisplay = null;
   let separationJobId = null;
+  let noteJobId = null;
+  let allNotesForPlayback = [];
+  let analyzedDuration = 10;
+  let selectedNoteForMatch = 0;
   let separationStems = null;
 
   // DOM refs
@@ -45,6 +49,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const stemSection = document.getElementById('stemSection');
   const stemContainer = document.getElementById('stemContainer');
   const dividerOr = document.getElementById('dividerOr');
+  const stem4Btn = document.getElementById('stem4Btn');
+  const stem6Btn = document.getElementById('stem6Btn');
+  let stemCount = 4;
+
+  if (stem4Btn && stem6Btn) {
+    stem4Btn.addEventListener('click', () => {
+      stemCount = 4;
+      stem4Btn.classList.add('active');
+      stem6Btn.classList.remove('active');
+    });
+    stem6Btn.addEventListener('click', () => {
+      stemCount = 6;
+      stem6Btn.classList.add('active');
+      stem4Btn.classList.remove('active');
+    });
+  }
 
   function formatETA(evals, totalEvals, elapsedSec) {
     if (evals < 10 || elapsedSec < 1) return '';
@@ -231,10 +251,21 @@ document.addEventListener('DOMContentLoaded', () => {
     playerSection.classList.add('hidden');
     if (dividerOr) dividerOr.classList.add('hidden');
 
-    // Phase 1: Show skeleton stems while Demucs runs
+    // Phase 1: Show skeleton stems with ETA while Demucs runs
     stemSection.classList.remove('hidden');
     stemContainer.innerHTML = '';
-    for (const name of ['vocals', 'drums', 'bass', 'other']) {
+
+    // ETA label
+    const etaLabel = document.createElement('div');
+    etaLabel.className = 'progress-phase';
+    etaLabel.style.marginBottom = '8px';
+    etaLabel.textContent = 'Separating stems...';
+    stemContainer.appendChild(etaLabel);
+
+    const stemNames = stemCount === 6
+      ? ['vocals', 'drums', 'bass', 'guitar', 'piano', 'other']
+      : ['vocals', 'drums', 'bass', 'other'];
+    for (const name of stemNames) {
       const row = document.createElement('div');
       row.className = 'stem-row loading';
       const label = document.createElement('span');
@@ -247,30 +278,218 @@ document.addEventListener('DOMContentLoaded', () => {
       stemContainer.appendChild(row);
     }
 
+    // ETA countdown timer (~2s per second of audio for htdemucs_ft)
+    const etaStart = Date.now();
+    // Dynamic ETA: htdemucs_ft processes at ~2x realtime on Mini
+    // Get audio duration from player if available, else estimate from file size
+    let audioDuration = 30; // fallback
+    if (player && player.audio && player.audio.duration && isFinite(player.audio.duration)) {
+      audioDuration = player.audio.duration;
+    }
+    const estimatedSec = Math.round(audioDuration * 2); // ~2x realtime for htdemucs_ft
+    const etaInterval = setInterval(() => {
+      const elapsed = Math.round((Date.now() - etaStart) / 1000);
+      const remaining = Math.max(0, estimatedSec - elapsed);
+      if (remaining > 0) {
+        etaLabel.textContent = 'Separating stems... ~' + remaining + 's';
+      } else {
+        etaLabel.textContent = 'Separating stems... ' + elapsed + 's (finishing up)';
+      }
+    }, 1000);
+
     let useStem = false;
 
     try {
       const sepFormData = new FormData();
       sepFormData.append('file', selectedFile);
+      sepFormData.append('stem_count', stemCount.toString());
+      console.log('[INSTRUMENTAL] Sending separation request...');
       const sepResp = await fetch('/api/separate', { method: 'POST', body: sepFormData });
+      clearInterval(etaInterval);
+      console.log('[INSTRUMENTAL] Separation response:', sepResp.status, sepResp.ok);
 
       if (sepResp.ok) {
         const sepJson = await sepResp.json();
+        console.log('[INSTRUMENTAL] Separation result:', JSON.stringify(sepJson).substring(0, 200));
         separationJobId = sepJson.job_id;
         separationStems = sepJson.stems;
 
-        // Phase 2: Show stems for selection
+        // Phase 2: Show stems for user to select, with a Start button
         progressSection.classList.add('hidden');
         stemSection.classList.remove('hidden');
 
         if (stemDisplay) stemDisplay.destroy();
         stemDisplay = new StemDisplay(stemContainer, audioCtx);
         stemDisplay.setStems(separationStems);
-        // Default selection is "other" (StemDisplay does this by default)
 
-        // Auto-start matching after 2 seconds
+        // Add "Start Matching" button below stems
+        let startBtn = stemContainer.querySelector('.stem-start-btn');
+        if (!startBtn) {
+          startBtn = document.createElement('button');
+          startBtn.className = 'match-btn stem-start-btn';
+          startBtn.textContent = 'Match Selected Stem';
+          startBtn.style.marginTop = '12px';
+          stemContainer.appendChild(startBtn);
+        }
+
+        // Wait for user to click "Match Selected Stem"
         useStem = true;
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => {
+          startBtn.addEventListener('click', () => {
+            if (stemDisplay) stemDisplay.stopPlayback();
+            resolve();
+          }, { once: true });
+        });
+
+        // Phase 2.5: Extract notes from selected stem and show preview
+        stemSection.classList.add('hidden');
+        progressSection.classList.remove('hidden');
+        progressPhase.textContent = 'Extracting notes...';
+        progressFill.style.width = '0%';
+        evalCount.textContent = '';
+        currentLoss.textContent = '';
+        elapsedTime.textContent = '';
+
+        const selectedStem = stemDisplay ? stemDisplay.getSelectedStem() : 'other';
+        const noteFormData = new FormData();
+        noteFormData.append('stem_job_id', separationJobId);
+        noteFormData.append('stem_name', selectedStem);
+
+        const noteResp = await fetch('/api/extract-notes', { method: 'POST', body: noteFormData });
+        if (noteResp.ok) {
+          const noteJson = await noteResp.json();
+          noteJobId = noteJson.note_job_id;
+          allNotesForPlayback = noteJson.all_notes || [];
+          analyzedDuration = noteJson.analyzed_duration || 10;
+
+          // Show extracted notes with play buttons
+          progressSection.classList.add('hidden');
+          stemSection.classList.remove('hidden');
+          stemContainer.innerHTML = '';
+
+          // Title - ask user to pick the cleanest note
+          const noteTitle = document.createElement('div');
+          noteTitle.className = 'progress-phase';
+          noteTitle.style.marginBottom = '8px';
+          noteTitle.textContent = noteJson.fallback
+            ? 'No individual notes detected'
+            : 'Which note sounds cleanest?';
+          stemContainer.appendChild(noteTitle);
+
+          let selectedNoteIndex = 0; // default to first (loudest)
+          const noteRows = [];
+
+          for (const note of noteJson.notes) {
+            const row = document.createElement('div');
+            row.className = 'stem-row loading' + (note.index === 0 ? ' selected' : '');
+
+            const playBtn = document.createElement('button');
+            playBtn.className = 'stem-play-btn';
+            playBtn.textContent = '\u25B6';
+            playBtn.disabled = true;
+
+            const label = document.createElement('span');
+            label.className = 'stem-label';
+            label.textContent = note.name;
+
+            const freqLabel = document.createElement('span');
+            freqLabel.className = 'stem-label';
+            freqLabel.style.width = '50px';
+            freqLabel.style.opacity = '0.5';
+            freqLabel.textContent = note.freq + 'Hz';
+
+            const waveDiv = document.createElement('div');
+            waveDiv.className = 'stem-waveform';
+            const canvas = document.createElement('canvas');
+            const playhead = document.createElement('div');
+            playhead.className = 'stem-playhead';
+            waveDiv.appendChild(canvas);
+            waveDiv.appendChild(playhead);
+
+            row.appendChild(playBtn);
+            row.appendChild(label);
+            row.appendChild(freqLabel);
+            row.appendChild(waveDiv);
+            stemContainer.appendChild(row);
+            noteRows.push(row);
+
+            // Click to select this note for optimization
+            row.addEventListener('click', () => {
+              noteRows.forEach(r => r.classList.remove('selected'));
+              row.classList.add('selected');
+              selectedNoteIndex = note.index;
+            });
+
+            // Load waveform async
+            (async () => {
+              try {
+                const resp = await fetch(note.url);
+                const buf = await resp.arrayBuffer();
+                const audioBuf = await audioCtx.decodeAudioData(buf);
+                const viz = new WaveformViz(canvas, {color: '#000000', bgColor: 'transparent', lineWidth: 1});
+                const w = canvas.parentElement ? canvas.parentElement.clientWidth : 400;
+                viz.setSize(w, 36);
+                viz.drawWaveform(audioBuf);
+                row.classList.remove('loading');
+                playBtn.disabled = false;
+
+                // Play button
+                let playing = null;
+                playBtn.addEventListener('click', (e) => {
+                  e.stopPropagation();
+                  if (playing) {
+                    try { playing.stop(); } catch(_) {}
+                    playBtn.textContent = '\u25B6';
+                    playBtn.classList.remove('playing');
+                    playhead.style.display = 'none';
+                    playing = null;
+                    return;
+                  }
+                  const src = audioCtx.createBufferSource();
+                  src.buffer = audioBuf;
+                  src.connect(audioCtx.destination);
+                  src.start();
+                  playBtn.textContent = '\u25A0';
+                  playBtn.classList.add('playing');
+                  playing = src;
+                  const startT = audioCtx.currentTime;
+                  const dur = audioBuf.duration;
+                  const anim = () => {
+                    if (!playing) return;
+                    const pct = Math.min((audioCtx.currentTime - startT) / dur, 1);
+                    playhead.style.left = (pct * 100) + '%';
+                    playhead.style.display = 'block';
+                    if (pct < 1) requestAnimationFrame(anim);
+                  };
+                  requestAnimationFrame(anim);
+                  src.onended = () => {
+                    playBtn.textContent = '\u25B6';
+                    playBtn.classList.remove('playing');
+                    playhead.style.display = 'none';
+                    playing = null;
+                  };
+                });
+              } catch(e) {
+                row.classList.remove('loading');
+                console.error('Note load failed:', e);
+              }
+            })();
+          }
+
+          // "Match This Note" button
+          const optBtn = document.createElement('button');
+          optBtn.className = 'match-btn';
+          optBtn.textContent = 'Match This Note';
+          optBtn.style.marginTop = '12px';
+          stemContainer.appendChild(optBtn);
+
+          await new Promise(resolve => {
+            optBtn.addEventListener('click', resolve, { once: true });
+          });
+
+          // Store which note index was selected
+          selectedNoteForMatch = selectedNoteIndex;
+        }
       } else {
         console.warn('Separation failed, falling back to direct match');
       }
@@ -283,7 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
     progressSection.classList.remove('hidden');
     progressPhase.textContent = 'Optimizing...';
     progressFill.style.width = '0%';
-    evalCount.textContent = '0 / 20,000';
+    evalCount.textContent = '0 / 10,000';
     currentLoss.textContent = 'Loss: --';
     elapsedTime.textContent = '0s';
 
@@ -295,6 +514,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (useStem && separationJobId) {
       formData.append('stem_job_id', separationJobId);
       formData.append('stem_name', stemDisplay ? stemDisplay.getSelectedStem() : 'other');
+    }
+    if (noteJobId) {
+      formData.append('note_job_id', noteJobId);
+      formData.append('selected_note', selectedNoteForMatch.toString());
     }
 
     try {
@@ -319,7 +542,14 @@ document.addEventListener('DOMContentLoaded', () => {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
 
-      if (data.type === 'progress') {
+      if (data.type === 'queued') {
+        progressPhase.textContent = data.message || 'In queue...';
+        progressFill.style.width = '0%';
+        evalCount.textContent = '';
+        currentLoss.textContent = '';
+        elapsedTime.textContent = '';
+      } else if (data.type === 'progress') {
+        progressPhase.textContent = 'Optimizing...';
         const pct = (data.evals / data.total_evals * 100).toFixed(1);
         progressFill.style.width = pct + '%';
         evalCount.textContent = data.evals.toLocaleString() + ' / ' + data.total_evals.toLocaleString();
@@ -362,7 +592,14 @@ document.addEventListener('DOMContentLoaded', () => {
         handleComplete(data);
         return;
       }
-      if (data.type === 'progress') {
+      if (data.type === 'queued') {
+        progressPhase.textContent = data.message || 'In queue...';
+        progressFill.style.width = '0%';
+        evalCount.textContent = '';
+        currentLoss.textContent = '';
+        elapsedTime.textContent = '';
+      } else if (data.type === 'progress') {
+        progressPhase.textContent = 'Optimizing...';
         const pct = (data.evals / data.total_evals * 100).toFixed(1);
         progressFill.style.width = pct + '%';
         evalCount.textContent = data.evals.toLocaleString() + ' / ' + data.total_evals.toLocaleString();
@@ -385,59 +622,87 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Handle completion ──────────────────────────────────────────────
 
   function handleComplete(data) {
-    if (ws) {
-      ws.close();
-      ws = null;
-    }
+    if (ws) { ws.close(); ws = null; }
 
-    // Hide progress, show result
     progressSection.classList.add('hidden');
     resultSection.classList.remove('hidden');
-    resultSection.classList.add('fadeIn');
 
     // Load synth params
     if (data.param_defs) synth.setParamDefs(data.param_defs);
     if (data.params) synth.setParams(data.params);
 
-    // Waveform visualization — construct synchronously so canvas size is set
-    // before keyboard renders, preventing a layout jump on the second rAF.
-    waveformViz = new WaveformViz(waveformCanvas, {
-      color: '#000000',
-      bgColor: 'transparent'
-    });
-    synth.renderOffline(440, 1.0).then((buf) => {
-      waveformViz.drawWaveform(buf);
-    });
+    // Clear result section and rebuild
+    const container = resultSection;
+    container.innerHTML = '';
 
-    // Keyboard
-    if (keyboard) keyboard.destroy();
-    keyboard = new PianoKeyboard(keyboardContainer, synth, {
-      startOctave: 3,
-      numOctaves: 2
-    });
-    keyboard.render();
+    // --- Original stem player ---
+    if (separationJobId && stemDisplay) {
+      const origLabel = document.createElement('div');
+      origLabel.className = 'player-label';
+      origLabel.textContent = 'Original';
+      container.appendChild(origLabel);
 
-    // Preset button (bottom-right of keyboard)
-    const presetBtn = document.createElement('button');
-    presetBtn.className = 'preset-btn';
-    presetBtn.title = 'Load best match (loss 2.09)';
-    presetBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><polyline points="12,6 12,12 16,14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    presetBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const resp = await fetch('/api/preset/best');
-      const data = await resp.json();
-      synth.setParamDefs(data.param_defs);
-      synth.setParams(data.params);
-      presetBtn.classList.add('active');
-      // Re-render waveform
-      synth.renderOffline(440, 1.0).then((buf) => {
-        if (waveformViz) waveformViz.drawWaveform(buf);
+      const origPlayer = document.createElement('div');
+      origPlayer.className = 'player-section';
+      origPlayer.innerHTML = '<div class="player"><button class="player-play-btn">Play</button><div class="player-progress"><div class="player-progress-fill"></div></div><span class="player-time">0:00</span></div>';
+      container.appendChild(origPlayer);
+
+      const stemUrl = '/api/stem/' + separationJobId + '/' + (stemDisplay.getSelectedStem() || 'other') + '.wav';
+      const origAP = new AudioPlayer(origPlayer);
+      origAP.setMaxDuration(analyzedDuration);
+      origAP.load(stemUrl);
+    }
+
+    // --- Matched sequence player ---
+    if (noteJobId) {
+      const matchLabel = document.createElement('div');
+      matchLabel.className = 'player-label';
+      matchLabel.textContent = 'Matched';
+      container.appendChild(matchLabel);
+
+      const matchPlayer = document.createElement('div');
+      matchPlayer.className = 'player-section';
+      matchPlayer.innerHTML = '<div class="player"><button class="player-play-btn">Play</button><div class="player-progress"><div class="player-progress-fill"></div></div><span class="player-time">0:00</span></div>';
+      container.appendChild(matchPlayer);
+
+      const matchAP = new AudioPlayer(matchPlayer);
+
+      // Render the sequence server-side
+      fetch('/api/render-sequence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ params: data.params, note_job_id: noteJobId, total_duration: analyzedDuration })
+      }).then(r => r.blob()).then(blob => {
+        matchAP.load(URL.createObjectURL(blob));
+
+        // Set up keyboard animation when matched plays
+        if (matchAP.audio && allNotesForPlayback.length > 0) {
+          matchAP.audio.addEventListener('play', () => {
+            scheduleKeyboardHighlights(matchAP.audio);
+          });
+          matchAP.audio.addEventListener('pause', () => {
+            clearKeyboardHighlights();
+          });
+          matchAP.audio.addEventListener('ended', () => {
+            clearKeyboardHighlights();
+          });
+        }
       });
-    });
-    // Export to Vital button
+    }
+
+    // --- Keyboard ---
+    const kbContainer = document.createElement('div');
+    kbContainer.className = 'keyboard-container';
+    container.appendChild(kbContainer);
+
+    if (keyboard) keyboard.destroy();
+    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 3, numOctaves: 2 });
+    keyboard.render();
+    kbContainer.style.position = 'relative';
+
+    // Export button
     const exportBtn = document.createElement('button');
     exportBtn.className = 'export-btn';
-    exportBtn.title = 'Export to Vital synth (.vital)';
     exportBtn.textContent = 'Export to Vital';
     exportBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -449,24 +714,40 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       if (resp.ok) {
         const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
+        a.href = URL.createObjectURL(blob);
         a.download = 'INSTRUMENTAL_Match.vital';
         a.click();
-        URL.revokeObjectURL(url);
       }
     });
+    kbContainer.appendChild(exportBtn);
 
-    keyboardContainer.style.position = 'relative';
-    keyboardContainer.appendChild(presetBtn);
-    keyboardContainer.appendChild(exportBtn);
+    // --- Keyboard animation helpers ---
+    let highlightTimeouts = [];
 
-    // DAW (sequence mode)
-    if (data.notes && data.notes.length > 0) {
-      dawSection.classList.remove('hidden');
-      dawView = new PianoRollDAW(dawContainer);
-      dawView.setNotes(data.notes);
+    function scheduleKeyboardHighlights(audioEl) {
+      clearKeyboardHighlights();
+      const startTime = audioEl.currentTime;
+      for (const note of allNotesForPlayback) {
+        const onDelay = Math.max(0, (note.onset - startTime) * 1000);
+        const offDelay = Math.max(0, (note.onset + note.duration - startTime) * 1000);
+        const midi = note.midi || round12(note.freq);
+        highlightTimeouts.push(setTimeout(() => keyboard.setActive(midi, true), onDelay));
+        highlightTimeouts.push(setTimeout(() => keyboard.setActive(midi, false), offDelay));
+      }
+    }
+
+    function clearKeyboardHighlights() {
+      highlightTimeouts.forEach(t => clearTimeout(t));
+      highlightTimeouts = [];
+      // Clear all active keys
+      if (keyboard && keyboard._keys) {
+        keyboard._keys.forEach((el, midi) => keyboard.setActive(midi, false));
+      }
+    }
+
+    function round12(freq) {
+      return Math.round(12 * Math.log2(freq / 440) + 69);
     }
   }
 
