@@ -214,6 +214,29 @@ def _extract_notes(audio_np: np.ndarray, sr: int = 44100, max_notes: int = 3, ma
         f0 = _detect_pitch(chunk, sr)
         return [(chunk, f0, len(chunk) / sr)], [{"onset": 0, "freq": f0, "duration": len(chunk) / sr}]
 
+    # Merge consecutive notes at the same pitch into sustained notes
+    # Prevents a held synth pad from becoming 10 rapid re-triggers
+    notes.sort(key=lambda n: n["onset"])
+    merged = []
+    for nd in notes:
+        semitone = round(12 * np.log2(nd["freq"] / 440.0))
+        if merged:
+            prev = merged[-1]
+            prev_semi = round(12 * np.log2(prev["freq"] / 440.0))
+            prev_end = prev["onset"] + prev["duration"]
+            gap = nd["onset"] - prev_end
+            if prev_semi == semitone and gap < 0.15:
+                # Merge: extend duration, concatenate audio
+                new_dur = nd["onset"] + nd["duration"] - prev["onset"]
+                # Build merged audio from original signal
+                start_s = int(prev["onset"] * sr)
+                end_s = min(int((prev["onset"] + new_dur) * sr), len(audio_np))
+                prev["audio"] = audio_np[start_s:end_s]
+                prev["duration"] = new_dur
+                continue
+        merged.append(nd)
+    notes = merged
+
     # Select up to max_notes representative notes (one per unique semitone, prefer loudest)
     # Loudest notes are most likely real signal, not Demucs bleed artifacts
     for nd in notes:
