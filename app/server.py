@@ -308,7 +308,7 @@ def _run_cmaes(
     note_data_for_result: Optional[list] = None,
 ):
     """Run CMA-ES with CPU multiprocessing."""
-    sigma0 = 0.3
+    sigma0 = 0.15
     n_cores = max(1, multiprocessing.cpu_count() - 1)
     popsize = max(16, n_cores * 2)
 
@@ -418,12 +418,9 @@ async def match_single(
     # If pre-extracted notes exist, use them directly (skip re-extraction)
     if note_job_id and note_job_id in note_jobs:
         target_notes = note_jobs[note_job_id]["target_notes"]
-        # If user selected a specific note, optimize on only that one
-        if selected_note is not None and 0 <= selected_note < len(target_notes):
-            target_notes = [target_notes[selected_note]]
-            print(f"[match-single] Using SINGLE selected note {selected_note} from {note_job_id}")
-        else:
-            print(f"[match-single] Using all {len(target_notes)} notes from {note_job_id}")
+        # Always optimize on ALL representative notes (like v24 did)
+        # Multi-note gives the loss function more pitch references for robust matching
+        print(f"[match-single] Using all {len(target_notes)} notes from {note_job_id}")
     else:
         # Load audio from stem or upload
         if stem_job_id and stem_name and stem_job_id in stem_dirs:
