@@ -635,58 +635,125 @@ document.addEventListener('DOMContentLoaded', () => {
     const container = resultSection;
     container.innerHTML = '';
 
-    // --- Original stem player ---
-    if (separationJobId && stemDisplay) {
-      const origLabel = document.createElement('div');
-      origLabel.className = 'player-label';
-      origLabel.textContent = 'Original';
-      container.appendChild(origLabel);
+    // Audio elements for synced playback
+    const origAudio = new Audio();
+    const matchAudio = new Audio();
+    let masterDur = analyzedDuration;
+    let bothReady = 0;
 
-      const origPlayer = document.createElement('div');
-      origPlayer.className = 'player-section';
-      origPlayer.innerHTML = '<div class="player"><button class="player-play-btn">Play</button><div class="player-progress"><div class="player-progress-fill"></div></div><span class="player-time">0:00</span></div>';
-      container.appendChild(origPlayer);
-
-      const stemUrl = '/api/stem/' + separationJobId + '/' + (stemDisplay.getSelectedStem() || 'other') + '.wav';
-      const origAP = new AudioPlayer(origPlayer);
-      origAP.setMaxDuration(analyzedDuration);
-      origAP.load(stemUrl);
+    // --- Track rows ---
+    function makeTrackRow(label, audio) {
+      const row = document.createElement('div');
+      row.className = 'ab-track';
+      row.innerHTML =
+        '<span class="ab-label">' + label + '</span>' +
+        '<div class="ab-bar"><div class="ab-bar-fill"></div></div>' +
+        '<input type="range" class="ab-volume" min="0" max="100" value="100">';
+      const vol = row.querySelector('.ab-volume');
+      vol.addEventListener('input', () => { audio.volume = vol.value / 100; });
+      return row;
     }
 
-    // --- Matched sequence player ---
+    const origRow = makeTrackRow('Original', origAudio);
+    container.appendChild(origRow);
+    const matchRow = makeTrackRow('Matched', matchAudio);
+    container.appendChild(matchRow);
+
+    // --- Shared transport controls ---
+    const transport = document.createElement('div');
+    transport.className = 'ab-transport';
+    transport.innerHTML =
+      '<button class="ab-play-btn">Play</button>' +
+      '<div class="ab-progress"><div class="ab-progress-fill"></div></div>' +
+      '<span class="ab-time">0:00 / 0:00</span>';
+    container.appendChild(transport);
+
+    const playBtn = transport.querySelector('.ab-play-btn');
+    const progressBar = transport.querySelector('.ab-progress');
+    const progressFill = transport.querySelector('.ab-progress-fill');
+    const timeDisplay = transport.querySelector('.ab-time');
+
+    function fmtTime(s) {
+      const m = Math.floor(s / 60);
+      return m + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+    }
+
+    function effectiveDur() {
+      return masterDur;
+    }
+
+    // Play/pause both in sync
+    let isPlaying = false;
+    playBtn.addEventListener('click', () => {
+      if (isPlaying) {
+        origAudio.pause(); matchAudio.pause();
+        playBtn.textContent = 'Play';
+        isPlaying = false;
+        clearKeyboardHighlights();
+      } else {
+        origAudio.play(); matchAudio.play();
+        playBtn.textContent = '||';
+        isPlaying = true;
+        scheduleKeyboardHighlights(matchAudio);
+      }
+    });
+
+    // Seek both
+    progressBar.addEventListener('click', (e) => {
+      const frac = e.offsetX / progressBar.offsetWidth;
+      const t = frac * effectiveDur();
+      origAudio.currentTime = Math.min(t, origAudio.duration || t);
+      matchAudio.currentTime = Math.min(t, matchAudio.duration || t);
+      clearKeyboardHighlights();
+      if (isPlaying) scheduleKeyboardHighlights(matchAudio);
+    });
+
+    // Update shared progress from original (master)
+    origAudio.addEventListener('timeupdate', () => {
+      const dur = effectiveDur();
+      if (!dur) return;
+      if (origAudio.currentTime >= dur) {
+        origAudio.pause(); matchAudio.pause();
+        origAudio.currentTime = 0; matchAudio.currentTime = 0;
+        playBtn.textContent = 'Play';
+        isPlaying = false;
+        progressFill.style.width = '0%';
+        timeDisplay.textContent = '0:00 / ' + fmtTime(dur);
+        clearKeyboardHighlights();
+        return;
+      }
+      const pct = (origAudio.currentTime / dur) * 100;
+      progressFill.style.width = Math.min(pct, 100) + '%';
+      timeDisplay.textContent = fmtTime(origAudio.currentTime) + ' / ' + fmtTime(dur);
+
+      // Update per-track progress bars
+      const origFill = origRow.querySelector('.ab-bar-fill');
+      origFill.style.width = Math.min(pct, 100) + '%';
+      const matchDur = matchAudio.duration || dur;
+      const matchPct = (matchAudio.currentTime / matchDur) * 100;
+      const matchFill = matchRow.querySelector('.ab-bar-fill');
+      matchFill.style.width = Math.min(matchPct, 100) + '%';
+    });
+
+    // Load audio
+    if (separationJobId && stemDisplay) {
+      const stemUrl = '/api/stem/' + separationJobId + '/' + (stemDisplay.getSelectedStem() || 'other') + '.wav';
+      origAudio.src = stemUrl;
+      origAudio.load();
+      origAudio.addEventListener('loadedmetadata', () => {
+        masterDur = Math.min(analyzedDuration, origAudio.duration);
+        timeDisplay.textContent = '0:00 / ' + fmtTime(masterDur);
+      });
+    }
+
     if (noteJobId) {
-      const matchLabel = document.createElement('div');
-      matchLabel.className = 'player-label';
-      matchLabel.textContent = 'Matched';
-      container.appendChild(matchLabel);
-
-      const matchPlayer = document.createElement('div');
-      matchPlayer.className = 'player-section';
-      matchPlayer.innerHTML = '<div class="player"><button class="player-play-btn">Play</button><div class="player-progress"><div class="player-progress-fill"></div></div><span class="player-time">0:00</span></div>';
-      container.appendChild(matchPlayer);
-
-      const matchAP = new AudioPlayer(matchPlayer);
-
-      // Render the sequence server-side
       fetch('/api/render-sequence', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ params: data.params, note_job_id: noteJobId, total_duration: analyzedDuration })
       }).then(r => r.blob()).then(blob => {
-        matchAP.load(URL.createObjectURL(blob));
-
-        // Set up keyboard animation when matched plays
-        if (matchAP.audio && allNotesForPlayback.length > 0) {
-          matchAP.audio.addEventListener('play', () => {
-            scheduleKeyboardHighlights(matchAP.audio);
-          });
-          matchAP.audio.addEventListener('pause', () => {
-            clearKeyboardHighlights();
-          });
-          matchAP.audio.addEventListener('ended', () => {
-            clearKeyboardHighlights();
-          });
-        }
+        matchAudio.src = URL.createObjectURL(blob);
+        matchAudio.load();
       });
     }
 
@@ -740,7 +807,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function clearKeyboardHighlights() {
       highlightTimeouts.forEach(t => clearTimeout(t));
       highlightTimeouts = [];
-      // Clear all active keys
       if (keyboard && keyboard._keys) {
         keyboard._keys.forEach((el, midi) => keyboard.setActive(midi, false));
       }
