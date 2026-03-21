@@ -539,13 +539,6 @@ header {
   color: var(--black-mid);
 }
 
-.stem-toggle {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  margin-bottom: 8px;
-}
-
 /* ── A/B comparison ───────────────────────────── */
 
 .ab-track {

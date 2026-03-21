@@ -49,22 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const stemSection = document.getElementById('stemSection');
   const stemContainer = document.getElementById('stemContainer');
   const dividerOr = document.getElementById('dividerOr');
-  const stem4Btn = document.getElementById('stem4Btn');
-  const stem6Btn = document.getElementById('stem6Btn');
-  let stemCount = 4;
-
-  if (stem4Btn && stem6Btn) {
-    stem4Btn.addEventListener('click', () => {
-      stemCount = 4;
-      stem4Btn.classList.add('active');
-      stem6Btn.classList.remove('active');
-    });
-    stem6Btn.addEventListener('click', () => {
-      stemCount = 6;
-      stem6Btn.classList.add('active');
-      stem4Btn.classList.remove('active');
-    });
-  }
+  const stemCount = 4;
 
   function formatETA(evals, totalEvals, elapsedSec) {
     if (evals < 10 || elapsedSec < 1) return '';
