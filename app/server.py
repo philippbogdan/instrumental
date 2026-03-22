@@ -420,7 +420,7 @@ def _run_cmaes(
         "type": "complete",
         "params": best_params,
         "param_defs": param_defs,
-        "loss": round(best_loss, 4),
+        "loss": round(overall_best_loss, 4),
         "notes": note_data_for_result,
     }
     loop.call_soon_threadsafe(queue.put_nowait, complete_msg)
