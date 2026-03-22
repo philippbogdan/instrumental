@@ -183,17 +183,10 @@ document.addEventListener('DOMContentLoaded', () => {
     container.appendChild(kbContainer);
 
     if (keyboard) keyboard.destroy();
-    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 3, numOctaves: 3 });
+    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 1, numOctaves: 4 });
     keyboard.render();
     kbContainer.style.position = 'relative';
-    // Center scroll on the playable range (C4=60 to F5=77, midpoint ~G#4=68)
-    setTimeout(() => {
-      const midKey = kbContainer.querySelector('[data-note="68"]'); // G#4
-      if (midKey) {
-        const offset = midKey.offsetLeft - kbContainer.offsetWidth / 2;
-        kbContainer.scrollLeft = Math.max(0, offset);
-      }
-    }, 50);
+    // No scroll centering needed — keyboard fits in view
 
     // Export button
     const exportBtn = document.createElement('button');
@@ -944,17 +937,10 @@ document.addEventListener('DOMContentLoaded', () => {
     container.appendChild(kbContainer);
 
     if (keyboard) keyboard.destroy();
-    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 3, numOctaves: 3 });
+    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 1, numOctaves: 4 });
     keyboard.render();
     kbContainer.style.position = 'relative';
-    // Center scroll on the playable range (C4=60 to F5=77, midpoint ~G#4=68)
-    setTimeout(() => {
-      const midKey = kbContainer.querySelector('[data-note="68"]'); // G#4
-      if (midKey) {
-        const offset = midKey.offsetLeft - kbContainer.offsetWidth / 2;
-        kbContainer.scrollLeft = Math.max(0, offset);
-      }
-    }, 50);
+    // No scroll centering needed — keyboard fits in view
 
     // Export button
     const exportBtn = document.createElement('button');
