@@ -156,16 +156,16 @@ def params_to_vital(params_normalized, param_defs):
     else:
         s["filter_1_model"] = 6.0
 
-    # --- Amplitude envelope (env 1) ---
+    # --- Amplitude envelope (env 1) — sustain fixed at 1.0 for full hold ---
     s["env_1_attack"] = p["attack"]
     s["env_1_decay"] = p["decay"]
-    s["env_1_sustain"] = p["sustain"]
+    s["env_1_sustain"] = 1.0
     s["env_1_release"] = p["release"]
 
-    # --- Filter envelope (env 2) ---
+    # --- Filter envelope (env 2) — sustain fixed at 1.0 ---
     s["env_2_attack"] = p["filter_attack"]
     s["env_2_decay"] = p["filter_decay"]
-    s["env_2_sustain"] = p["filter_sustain"]
+    s["env_2_sustain"] = 1.0
     s["env_2_release"] = p["filter_release"]
 
     # --- Filter envelope amount ---
