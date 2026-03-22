@@ -1,6 +1,16 @@
 /* ── app.js ── Main orchestrator ─────────────────────────────────────── */
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Analytics helper
+  function _track(type, data) {
+    fetch('/api/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, data: data || {} })
+    }).catch(() => {});
+  }
+  _track('visit');
+
   // State
   let audioCtx = null;
   let synth = null;
@@ -62,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Stop any playing audio
       _activeAudios.forEach(a => { a.pause(); a.src = ''; });
       _activeAudios = [];
+      _track('cherrypick', { song: demoId });
 
       // Highlight active card
       document.querySelectorAll('.demo-card').forEach(c => c.classList.remove('active'));
@@ -148,6 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
         origAudio.play(); matchAudio.play();
         playBtn.textContent = '||';
         isPlaying = true;
+        _track('play', { demo: demoId });
         scheduleDemoHighlights(matchAudio);
       }
     });
@@ -211,6 +223,7 @@ document.addEventListener('DOMContentLoaded', () => {
         a.href = URL.createObjectURL(blob);
         a.download = 'INSTRUMENTAL_Match.vital';
         a.click();
+        _track('export_vital');
       }
     });
     kbContainer.appendChild(exportBtn);
@@ -337,6 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function performSearch() {
     const query = searchInput.value.trim();
     if (!query) return;
+    _track('search', { query });
 
     try {
       const resp = await fetch('/api/search?q=' + encodeURIComponent(query));
@@ -387,6 +401,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function selectSearchResult(track) {
     isWildGround = true;
+    _track('search_select', { title: track.title, artist: track.artist?.name });
     searchResults.classList.add('hidden');
     searchResults.innerHTML = '';
 
@@ -966,6 +981,7 @@ document.addEventListener('DOMContentLoaded', () => {
         a.href = URL.createObjectURL(blob);
         a.download = 'INSTRUMENTAL_Match.vital';
         a.click();
+        _track('export_vital');
       }
     });
     kbContainer.appendChild(exportBtn);

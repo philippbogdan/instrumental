@@ -218,9 +218,7 @@ def _extract_notes(audio_np: np.ndarray, sr: int = 44100, max_notes: int = 3, ma
         if freq < 50 or freq > 2000 or np.isnan(freq):
             continue
 
-        # Clean: keep only harmonic energy, remove Demucs bleed
-        cleaned = _harmonic_clean(seg_audio, freq, sr)
-        notes.append({"audio": cleaned, "freq": freq, "duration": duration, "onset": onset})
+        notes.append({"audio": seg_audio, "freq": freq, "duration": duration, "onset": onset})
 
     if len(notes) == 0:
         # F3 fallback
@@ -429,6 +427,69 @@ def _run_cmaes(
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Analytics
+# ---------------------------------------------------------------------------
+EVENTS_FILE = os.path.join(os.path.dirname(APP_DIR), "events.jsonl")
+
+
+@app.post("/api/event")
+async def track_event(request: Request):
+    """Log a user event for analytics."""
+    body = await request.json()
+    event = {
+        "ts": time.time(),
+        "type": body.get("type", "unknown"),
+        "data": body.get("data", {}),
+        "ip": request.client.host if request.client else "unknown",
+    }
+    with open(EVENTS_FILE, "a") as f:
+        f.write(json.dumps(event) + "\n")
+    return {"ok": True}
+
+
+@app.get("/api/stats")
+async def get_stats():
+    """Return aggregated analytics for the stats page."""
+    if not os.path.exists(EVENTS_FILE):
+        return {"events": 0, "funnel": {}, "songs": {}, "searches": []}
+
+    events = []
+    with open(EVENTS_FILE) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                events.append(json.loads(line))
+
+    # Aggregate
+    funnel = {}
+    songs = {}
+    searches = []
+    exports = 0
+    for e in events:
+        t = e.get("type", "")
+        funnel[t] = funnel.get(t, 0) + 1
+        if t == "cherrypick":
+            song = e.get("data", {}).get("song", "?")
+            songs[song] = songs.get(song, 0) + 1
+        elif t == "search":
+            q = e.get("data", {}).get("query", "")
+            if q:
+                searches.append(q)
+        elif t == "export_vital":
+            exports += 1
+
+    return {
+        "events": len(events),
+        "funnel": funnel,
+        "songs": songs,
+        "searches": searches[-50:],  # last 50
+        "exports": exports,
+        "first_event": events[0]["ts"] if events else None,
+        "last_event": events[-1]["ts"] if events else None,
+    }
+
 
 @app.get("/api/health")
 async def health():

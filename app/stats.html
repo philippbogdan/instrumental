@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>INSTRUMENTAL — Stats</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #1a1a1a; color: #e0e0e0; font-family: 'Courier New', monospace; padding: 32px; }
+    h1 { font-size: 1.2rem; color: #E52B50; margin-bottom: 24px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .card { background: #222; border: 1px solid #333; border-radius: 8px; padding: 16px; }
+    .card h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: #888; margin-bottom: 8px; }
+    .big { font-size: 2rem; color: #E52B50; }
+    .funnel-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #333; font-size: 0.85rem; }
+    .funnel-row .count { color: #E52B50; }
+    .search-list { max-height: 200px; overflow-y: auto; font-size: 0.8rem; }
+    .search-list div { padding: 2px 0; color: #aaa; }
+    .refresh { color: #666; font-size: 0.7rem; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <h1>INSTRUMENTAL STATS</h1>
+  <div class="grid">
+    <div class="card">
+      <h2>Total Events</h2>
+      <div id="totalEvents" class="big">—</div>
+    </div>
+    <div class="card">
+      <h2>Exports to Vital</h2>
+      <div id="exports" class="big">—</div>
+    </div>
+    <div class="card">
+      <h2>Time Range</h2>
+      <div id="timeRange" style="font-size:0.85rem; color:#aaa;">—</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Funnel</h2>
+      <div id="funnel"></div>
+    </div>
+    <div class="card">
+      <h2>Cherrypick Clicks</h2>
+      <div id="songs"></div>
+    </div>
+    <div class="card">
+      <h2>Wild Ground Searches</h2>
+      <div id="searches" class="search-list"></div>
+    </div>
+  </div>
+
+  <div class="refresh">Auto-refreshes every 10s</div>
+
+  <script>
+    const FUNNEL_ORDER = ['visit', 'cherrypick', 'play', 'export_vital', 'search', 'search_select', 'upload', 'match_start', 'result_view'];
+    const LABELS = {
+      visit: 'Page Visit',
+      cherrypick: 'Cherrypick Clicked',
+      play: 'Play Pressed',
+      export_vital: 'Export to Vital',
+      search: 'Wild Ground Search',
+      search_select: 'Song Selected',
+      upload: 'File Uploaded',
+      match_start: 'Match Started',
+      result_view: 'Result Viewed',
+    };
+
+    async function refresh() {
+      try {
+        const r = await fetch('/api/stats');
+        const d = await r.json();
+
+        document.getElementById('totalEvents').textContent = d.events;
+        document.getElementById('exports').textContent = d.exports;
+
+        if (d.first_event && d.last_event) {
+          const first = new Date(d.first_event * 1000).toLocaleString();
+          const last = new Date(d.last_event * 1000).toLocaleString();
+          document.getElementById('timeRange').textContent = first + ' → ' + last;
+        }
+
+        // Funnel
+        const funnelEl = document.getElementById('funnel');
+        funnelEl.innerHTML = '';
+        for (const key of FUNNEL_ORDER) {
+          const count = d.funnel[key] || 0;
+          if (count > 0 || ['visit', 'cherrypick', 'play', 'export_vital'].includes(key)) {
+            const row = document.createElement('div');
+            row.className = 'funnel-row';
+            row.innerHTML = '<span>' + (LABELS[key] || key) + '</span><span class="count">' + count + '</span>';
+            funnelEl.appendChild(row);
+          }
+        }
+        // Any events not in FUNNEL_ORDER
+        for (const [key, count] of Object.entries(d.funnel)) {
+          if (!FUNNEL_ORDER.includes(key)) {
+            const row = document.createElement('div');
+            row.className = 'funnel-row';
+            row.innerHTML = '<span>' + key + '</span><span class="count">' + count + '</span>';
+            funnelEl.appendChild(row);
+          }
+        }
+
+        // Songs
+        const songsEl = document.getElementById('songs');
+        songsEl.innerHTML = '';
+        for (const [song, count] of Object.entries(d.songs).sort((a, b) => b[1] - a[1])) {
+          const row = document.createElement('div');
+          row.className = 'funnel-row';
+          row.innerHTML = '<span>' + song + '</span><span class="count">' + count + '</span>';
+          songsEl.appendChild(row);
+        }
+        if (Object.keys(d.songs).length === 0) {
+          songsEl.innerHTML = '<div style="color:#666">No clicks yet</div>';
+        }
+
+        // Searches
+        const searchesEl = document.getElementById('searches');
+        searchesEl.innerHTML = '';
+        for (const q of d.searches.reverse()) {
+          const div = document.createElement('div');
+          div.textContent = q;
+          searchesEl.appendChild(div);
+        }
+        if (d.searches.length === 0) {
+          searchesEl.innerHTML = '<div style="color:#666">No searches yet</div>';
+        }
+      } catch (e) {
+        console.error('Stats fetch error:', e);
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 10000);
+  </script>
+</body>
+</html>
