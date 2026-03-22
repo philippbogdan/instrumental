@@ -94,8 +94,9 @@ document.addEventListener('DOMContentLoaded', () => {
     container.innerHTML = '';
 
     // Audio elements
-    const origAudio = new Audio('/demos/' + demoId + '_original.wav');
-    const matchAudio = new Audio('/demos/' + demoId + '_matched.wav');
+    const cacheBust = '?v=21';
+    const origAudio = new Audio('/demos/' + demoId + '_original.wav' + cacheBust);
+    const matchAudio = new Audio('/demos/' + demoId + '_matched.wav' + cacheBust);
     let masterDur = demoData.duration;
 
     // Track rows
