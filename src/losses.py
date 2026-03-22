@@ -178,16 +178,12 @@ class CentroidLoss:
         mag_tgt = self._stft_mag(tgt)
         c_gen = self._centroid(mag_gen)
         c_tgt = self._centroid(mag_tgt)
-        return torch.mean(torch.abs(c_gen - c_tgt))
+        nyquist_bin = self.n_fft // 2 + 1
+        return torch.mean(torch.abs(c_gen - c_tgt)) / nyquist_bin
 
 
 class MatchingLoss:
-    """Combined loss: 1.0 * MelSTFT + 0.5 * Centroid + 0.01 * MFCC.
-
-    Centroid is un-normalized (raw bin difference) so needs meaningful weight.
-    MFCC reduced because it penalizes spectral differences caused by Demucs
-    bleed in the target, fighting against correct brightness matching.
-    """
+    """Combined loss: 1.0 * MelSTFT + 0.1 * Centroid + 0.05 * MFCC."""
 
     def __init__(self):
         self._mel_stft = MelSTFTLoss()
@@ -197,8 +193,8 @@ class MatchingLoss:
     def __call__(self, generated: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return (
             1.0 * self._mel_stft(generated, target)
-            + 0.5 * self._centroid(generated, target)
-            + 0.01 * self._mfcc(generated, target)
+            + 0.1 * self._centroid(generated, target)
+            + 0.05 * self._mfcc(generated, target)
         )
 
 

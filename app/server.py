@@ -277,63 +277,12 @@ def _detect_pitch(audio_np: np.ndarray, sr: int = 44100) -> float:
 # Module-level globals for multiprocessing workers
 _WORKER_TARGET_NOTES = []
 
-# Indices of the 13 params CMA-ES optimizes (the rest are frozen)
-# Chosen by round-trip recovery test: only params consistently recovered
-OPTIMIZED_INDICES = [
-    0,   # saw_mix
-    2,   # sine_mix
-    3,   # noise_mix
-    4,   # detune
-    5,   # filter_cutoff
-    6,   # filter_resonance
-    7,   # attack
-    8,   # decay
-    9,   # sustain
-    10,  # release
-    11,  # gain
-    12,  # filter_env
-    22,  # pulse_width
-]
-N_OPTIMIZED = len(OPTIMIZED_INDICES)
 
-# Frozen defaults for the other 15 params (sensible neutral values)
-FROZEN_DEFAULTS = np.full(N_PARAMS, 0.5, dtype=np.float32)
-FROZEN_DEFAULTS[1] = 0.0    # square_mix — degenerate with saw
-FROZEN_DEFAULTS[13] = 0.3   # reverb_size
-FROZEN_DEFAULTS[14] = 0.05  # reverb_mix — nearly dry
-FROZEN_DEFAULTS[15] = 0.0   # unison_voices — 1 voice
-FROZEN_DEFAULTS[16] = 0.0   # unison_spread — none
-FROZEN_DEFAULTS[17] = 0.0   # noise_floor — none
-FROZEN_DEFAULTS[18] = 0.05  # filter_attack
-FROZEN_DEFAULTS[19] = 0.3   # filter_decay
-FROZEN_DEFAULTS[20] = 0.5   # filter_sustain
-FROZEN_DEFAULTS[21] = 0.3   # filter_release
-FROZEN_DEFAULTS[23] = 0.25  # filter_slope — gentle
-FROZEN_DEFAULTS[24] = 0.5   # eq1_freq — mid
-FROZEN_DEFAULTS[25] = 0.5   # eq1_gain — 0dB
-FROZEN_DEFAULTS[26] = 0.5   # eq2_freq — mid
-FROZEN_DEFAULTS[27] = 0.5   # eq2_gain — 0dB
-
-
-def _expand_params(reduced_np):
-    """Expand 13 optimized params into full 28 by injecting frozen defaults."""
-    full = FROZEN_DEFAULTS.copy()
-    for i, idx in enumerate(OPTIMIZED_INDICES):
-        full[idx] = reduced_np[i]
-    return full
-
-
-def _reduce_params(full_np):
-    """Extract the 13 optimized params from a full 28-param vector."""
-    return np.array([full_np[idx] for idx in OPTIMIZED_INDICES], dtype=np.float32)
-
-
-def _evaluate_single(reduced_np):
+def _evaluate_single(params_np):
     """Evaluate a single candidate in a worker process."""
     synth = SynthPatch()
     loss_fn = get_loss("matching")
-    full_np = _expand_params(reduced_np)
-    params = torch.tensor(full_np, dtype=torch.float32)
+    params = torch.tensor(params_np, dtype=torch.float32)
     total = 0.0
     for audio_np, freq, dur in _WORKER_TARGET_NOTES:
         target = torch.tensor(audio_np, dtype=torch.float32).unsqueeze(0)
@@ -350,6 +299,37 @@ def _init_worker(target_notes):
     _WORKER_TARGET_NOTES = target_notes
 
 
+def _make_diverse_starts(x0: np.ndarray, n_starts: int = 3):
+    """Create diverse starting points for multi-start CMA-ES.
+
+    Start 0: spectral init (original x0)
+    Start 1: saw-heavy (high saw, open filter, like v24)
+    Start 2: square-heavy (high square, open filter)
+
+    All starts copy the spectral init's envelope/filter params as base,
+    only varying the waveform mix to explore different basins.
+    """
+    starts = [x0.copy()]
+
+    # Start 1: saw-dominant, wide filter (v24-like)
+    s1 = x0.copy()
+    s1[0] = 0.9   # saw_mix high
+    s1[1] = 0.1   # square_mix low
+    s1[2] = 0.05  # sine_mix low
+    s1[5] = 0.9   # filter_cutoff wide open
+    starts.append(s1)
+
+    # Start 2: square-dominant, wide filter
+    s2 = x0.copy()
+    s2[0] = 0.1   # saw_mix low
+    s2[1] = 0.9   # square_mix high
+    s2[2] = 0.05  # sine_mix low
+    s2[5] = 0.9   # filter_cutoff wide open
+    starts.append(s2)
+
+    return starts[:n_starts]
+
+
 def _run_cmaes(
     target_notes: list,
     x0: np.ndarray,
@@ -358,50 +338,58 @@ def _run_cmaes(
     loop: asyncio.AbstractEventLoop,
     note_data_for_result: Optional[list] = None,
 ):
-    """Run CMA-ES with CPU multiprocessing in reduced 13D param space."""
+    """Run multi-start CMA-ES: 3 starts with diverse waveform seeds, pick best."""
+    N_STARTS = 3
+    evals_per_start = n_evals // N_STARTS
     sigma0 = 0.15
     n_cores = max(1, multiprocessing.cpu_count() - 1)
     popsize = max(16, n_cores * 2)
 
-    # Reduce x0 from 28D to 13D
-    x0_reduced = _reduce_params(x0)
-
-    es = cma.CMAEvolutionStrategy(x0_reduced, sigma0, {
-        "bounds": [[0] * N_OPTIMIZED, [1] * N_OPTIMIZED],
-        "maxfevals": n_evals,
-        "popsize": popsize,
-        "verbose": -9,
-        "tolx": 1e-8,
-        "tolfun": 1e-10,
-    })
-
-    best_loss = float("inf")
-    evals = 0
+    starts = _make_diverse_starts(x0, N_STARTS)
+    overall_best_loss = float("inf")
+    overall_best_params = x0.copy()
+    total_evals = 0
     t0 = time.time()
 
     with multiprocessing.Pool(n_cores, initializer=_init_worker, initargs=(target_notes,)) as pool:
-        while not es.stop():
-            solutions = es.ask()
-            fitnesses = pool.map(_evaluate_single, solutions)
-            es.tell(solutions, fitnesses)
-            evals += len(solutions)
-            gen_best = min(fitnesses)
-            if gen_best < best_loss:
-                best_loss = gen_best
+        for start_idx, start_x0 in enumerate(starts):
+            es = cma.CMAEvolutionStrategy(start_x0, sigma0, {
+                "bounds": [[0] * N_PARAMS, [1] * N_PARAMS],
+                "maxfevals": evals_per_start,
+                "popsize": popsize,
+                "verbose": -9,
+                "tolx": 1e-8,
+                "tolfun": 1e-10,
+            })
 
-            elapsed = time.time() - t0
-            msg = {
-                "type": "progress",
-                "evals": evals,
-                "total_evals": n_evals,
-                "best_loss": round(best_loss, 4),
-                "elapsed_seconds": round(elapsed, 1),
-            }
-            loop.call_soon_threadsafe(queue.put_nowait, msg)
+            start_best = float("inf")
+            while not es.stop():
+                solutions = es.ask()
+                fitnesses = pool.map(_evaluate_single, solutions)
+                es.tell(solutions, fitnesses)
+                total_evals += len(solutions)
+                gen_best = min(fitnesses)
+                if gen_best < start_best:
+                    start_best = gen_best
+                if start_best < overall_best_loss:
+                    overall_best_loss = start_best
+                    overall_best_params = es.result.xbest.copy()
 
-    # Expand best result from 13D back to 28D
+                elapsed = time.time() - t0
+                msg = {
+                    "type": "progress",
+                    "evals": total_evals,
+                    "total_evals": n_evals,
+                    "best_loss": round(overall_best_loss, 4),
+                    "elapsed_seconds": round(elapsed, 1),
+                }
+                loop.call_soon_threadsafe(queue.put_nowait, msg)
+
+            print(f"[CMA-ES] Start {start_idx}: loss={start_best:.4f} "
+                  f"(saw={es.result.xbest[0]:.2f} sq={es.result.xbest[1]:.2f})")
+
     param_defs = [{"name": name, "lo": lo, "hi": hi} for name, lo, hi in PARAM_DEFS]
-    best_params = list(_expand_params(es.result.xbest))
+    best_params = list(overall_best_params)
 
     complete_msg = {
         "type": "complete",
