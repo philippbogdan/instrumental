@@ -51,6 +51,186 @@ document.addEventListener('DOMContentLoaded', () => {
   const dividerOr = document.getElementById('dividerOr');
   const stemCount = 4;
 
+  // ── Demo card click handler ─────────────────────────────────────────
+  document.querySelectorAll('.demo-card').forEach(card => {
+    card.addEventListener('click', async () => {
+      const demoId = card.dataset.demo;
+      if (!demoId) return;
+
+      // Highlight active card
+      document.querySelectorAll('.demo-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+
+      // Hide other sections, show result
+      if (dividerOr) dividerOr.classList.add('hidden');
+      dropZone.classList.add('hidden');
+      if (playerSection) playerSection.classList.add('hidden');
+      if (stemSection) stemSection.classList.add('hidden');
+      progressSection.classList.add('hidden');
+      resultSection.classList.remove('hidden');
+
+      // Load pre-baked demo data
+      const notesResp = await fetch('/demos/' + demoId + '_notes.json');
+      const demoData = await notesResp.json();
+
+      // Initialize synth with matched params
+      ensureAudioCtx();
+      if (!synth) synth = new InstrumentalSynth(audioCtx);
+      synth.setParams(demoData.params);
+
+      allNotesForPlayback = demoData.notes;
+      analyzedDuration = demoData.duration;
+
+      // Build result UI with pre-baked audio
+      handleDemoResult(demoId, demoData);
+    });
+  });
+
+  function handleDemoResult(demoId, demoData) {
+    const container = resultSection;
+    container.innerHTML = '';
+
+    // Audio elements
+    const origAudio = new Audio('/demos/' + demoId + '_original.wav');
+    const matchAudio = new Audio('/demos/' + demoId + '_matched.wav');
+    let masterDur = demoData.duration;
+
+    // Track rows
+    function makeTrackRow(label, audio) {
+      const row = document.createElement('div');
+      row.className = 'ab-track';
+      row.innerHTML =
+        '<span class="ab-label">' + label + '</span>' +
+        '<div class="ab-bar"><div class="ab-bar-fill"></div></div>' +
+        '<input type="range" class="ab-volume" min="0" max="100" value="100">';
+      row.querySelector('.ab-volume').addEventListener('input', function() {
+        audio.volume = this.value / 100;
+      });
+      return row;
+    }
+
+    container.appendChild(makeTrackRow('Original', origAudio));
+    const matchRow = makeTrackRow('Matched', matchAudio);
+    container.appendChild(matchRow);
+
+    // Transport
+    const transport = document.createElement('div');
+    transport.className = 'ab-transport';
+    transport.innerHTML =
+      '<button class="ab-play-btn">Play</button>' +
+      '<div class="ab-progress"><div class="ab-progress-fill"></div></div>' +
+      '<span class="ab-time">0:00 / ' + fmtTime(masterDur) + '</span>';
+    container.appendChild(transport);
+
+    const playBtn = transport.querySelector('.ab-play-btn');
+    const progressBar = transport.querySelector('.ab-progress');
+    const progressFill = transport.querySelector('.ab-progress-fill');
+    const timeDisplay = transport.querySelector('.ab-time');
+    let isPlaying = false;
+
+    playBtn.addEventListener('click', () => {
+      if (isPlaying) {
+        origAudio.pause(); matchAudio.pause();
+        playBtn.textContent = 'Play';
+        isPlaying = false;
+        clearDemoHighlights();
+      } else {
+        origAudio.play(); matchAudio.play();
+        playBtn.textContent = '||';
+        isPlaying = true;
+        scheduleDemoHighlights(matchAudio);
+      }
+    });
+
+    progressBar.addEventListener('click', (e) => {
+      const frac = e.offsetX / progressBar.offsetWidth;
+      const t = frac * masterDur;
+      origAudio.currentTime = Math.min(t, origAudio.duration || t);
+      matchAudio.currentTime = Math.min(t, matchAudio.duration || t);
+      clearDemoHighlights();
+      if (isPlaying) scheduleDemoHighlights(matchAudio);
+    });
+
+    origAudio.addEventListener('timeupdate', () => {
+      if (!masterDur) return;
+      if (origAudio.currentTime >= masterDur) {
+        origAudio.pause(); matchAudio.pause();
+        origAudio.currentTime = 0; matchAudio.currentTime = 0;
+        playBtn.textContent = 'Play';
+        isPlaying = false;
+        progressFill.style.width = '0%';
+        timeDisplay.textContent = '0:00 / ' + fmtTime(masterDur);
+        clearDemoHighlights();
+        return;
+      }
+      const pct = (origAudio.currentTime / masterDur) * 100;
+      progressFill.style.width = Math.min(pct, 100) + '%';
+      timeDisplay.textContent = fmtTime(origAudio.currentTime) + ' / ' + fmtTime(masterDur);
+    });
+
+    origAudio.addEventListener('loadedmetadata', () => {
+      masterDur = Math.min(demoData.duration, origAudio.duration);
+      timeDisplay.textContent = '0:00 / ' + fmtTime(masterDur);
+    });
+
+    // Keyboard
+    const kbContainer = document.createElement('div');
+    kbContainer.className = 'keyboard-container';
+    container.appendChild(kbContainer);
+
+    if (keyboard) keyboard.destroy();
+    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 3, numOctaves: 2 });
+    keyboard.render();
+    kbContainer.style.position = 'relative';
+
+    // Export button
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'export-btn';
+    exportBtn.textContent = 'Export to Vital';
+    exportBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const resp = await fetch('/api/export/vital', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ params: demoData.params })
+      });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'INSTRUMENTAL_Match.vital';
+        a.click();
+      }
+    });
+    kbContainer.appendChild(exportBtn);
+
+    // Keyboard animation
+    let demoHighlights = [];
+    function scheduleDemoHighlights(audioEl) {
+      clearDemoHighlights();
+      const startTime = audioEl.currentTime;
+      for (const note of demoData.notes) {
+        const onDelay = Math.max(0, (note.onset - startTime) * 1000);
+        const offDelay = Math.max(0, (note.onset + note.duration - startTime) * 1000);
+        const midi = note.midi || Math.round(12 * Math.log2(note.freq / 440) + 69);
+        demoHighlights.push(setTimeout(() => keyboard.setActive(midi, true), onDelay));
+        demoHighlights.push(setTimeout(() => keyboard.setActive(midi, false), offDelay));
+      }
+    }
+    function clearDemoHighlights() {
+      demoHighlights.forEach(t => clearTimeout(t));
+      demoHighlights = [];
+      if (keyboard && keyboard._keys) {
+        keyboard._keys.forEach((el, midi) => keyboard.setActive(midi, false));
+      }
+    }
+  }
+
+  function fmtTime(s) {
+    const m = Math.floor(s / 60);
+    return m + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+  }
+
   function formatETA(evals, totalEvals, elapsedSec) {
     if (evals < 10 || elapsedSec < 1) return '';
     const rate = evals / elapsedSec;

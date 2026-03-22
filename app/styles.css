@@ -447,6 +447,52 @@ header {
 
 /* ── Search ────────────────────────────────────── */
 
+/* ── Demo cards ───────────────────────────────── */
+
+.demo-section {
+  margin-bottom: 16px;
+}
+
+.demo-grid {
+  display: flex;
+  gap: 12px;
+}
+
+.demo-card {
+  flex: 1;
+  padding: 20px;
+  border: 1.5px solid var(--black-dim);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.demo-card:hover {
+  border-color: var(--amaranth);
+  background: var(--amaranth-dim);
+}
+
+.demo-card.active {
+  border-color: var(--amaranth);
+  background: var(--amaranth-dim);
+}
+
+.demo-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.demo-subtitle {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.8rem;
+  color: var(--black-mid);
+  margin-top: 4px;
+}
+
 .search-section {
   margin-bottom: 16px;
 }

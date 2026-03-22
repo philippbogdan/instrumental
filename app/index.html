@@ -14,13 +14,19 @@
     <h1 class="logo">INSTRUMENTAL</h1>
   </header>
   <main>
-    <section id="searchSection" class="search-section">
-      <div class="search-bar">
-        <input type="text" id="searchInput" placeholder="Search for a song...">
-        <button id="searchBtn" class="search-btn">Search</button>
+    <section id="demoSection" class="demo-section">
+      <div class="demo-grid">
+        <div class="demo-card" data-demo="gunnr">
+          <div class="demo-title">GUNNR</div>
+          <div class="demo-subtitle">Said and Done</div>
+        </div>
+        <div class="demo-card" data-demo="poster_boy">
+          <div class="demo-title">2HOLLIS</div>
+          <div class="demo-subtitle">Poster Boy</div>
+        </div>
       </div>
-      <div id="searchResults" class="search-results hidden"></div>
     </section>
+
     <div id="dividerOr" class="divider-or">or</div>
 
     <section id="dropZone" class="drop-zone">
@@ -28,8 +34,8 @@
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M24 34V14M24 14L16 22M24 14L32 22" stroke="#000000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <p class="drop-text">Drop your sound</p>
-        <p class="drop-hint">MP3 or WAV</p>
+        <p class="drop-text">Drop your synth sample</p>
+        <p class="drop-hint">Clean synth recording, MP3 or WAV</p>
       </div>
       <input type="file" id="fileInput" accept=".mp3,.wav,.m4a" hidden>
       <div id="fileInfo" class="file-info hidden">
@@ -76,12 +82,12 @@
     </section>
   </main>
 
-  <script src="synth.js?v=17"></script>
-  <script src="waveform.js?v=17"></script>
-  <script src="keyboard.js?v=17"></script>
-  <script src="daw.js?v=17"></script>
-  <script src="player.js?v=17"></script>
-  <script src="stems.js?v=17"></script>
-  <script src="app.js?v=17"></script>
+  <script src="synth.js?v=18"></script>
+  <script src="waveform.js?v=18"></script>
+  <script src="keyboard.js?v=18"></script>
+  <script src="daw.js?v=18"></script>
+  <script src="player.js?v=18"></script>
+  <script src="stems.js?v=18"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>
