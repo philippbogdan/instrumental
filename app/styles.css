@@ -250,7 +250,8 @@ header {
 
 .keyboard-container {
   width: 100%;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   border-radius: 8px;
   margin-top: 24px;
   position: relative;

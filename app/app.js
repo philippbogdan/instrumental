@@ -183,9 +183,17 @@ document.addEventListener('DOMContentLoaded', () => {
     container.appendChild(kbContainer);
 
     if (keyboard) keyboard.destroy();
-    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 3, numOctaves: 2 });
+    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 2, numOctaves: 4 });
     keyboard.render();
     kbContainer.style.position = 'relative';
+    // Center scroll on G3-A3 area (where the home row keys live)
+    setTimeout(() => {
+      const g3Key = kbContainer.querySelector('[data-note="55"]'); // G3 = MIDI 55
+      if (g3Key) {
+        const offset = g3Key.offsetLeft - kbContainer.offsetWidth / 2 + g3Key.offsetWidth;
+        kbContainer.scrollLeft = Math.max(0, offset);
+      }
+    }, 50);
 
     // Export button
     const exportBtn = document.createElement('button');
@@ -936,9 +944,17 @@ document.addEventListener('DOMContentLoaded', () => {
     container.appendChild(kbContainer);
 
     if (keyboard) keyboard.destroy();
-    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 3, numOctaves: 2 });
+    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 2, numOctaves: 4 });
     keyboard.render();
     kbContainer.style.position = 'relative';
+    // Center scroll on G3-A3 area (where the home row keys live)
+    setTimeout(() => {
+      const g3Key = kbContainer.querySelector('[data-note="55"]'); // G3 = MIDI 55
+      if (g3Key) {
+        const offset = g3Key.offsetLeft - kbContainer.offsetWidth / 2 + g3Key.offsetWidth;
+        kbContainer.scrollLeft = Math.max(0, offset);
+      }
+    }, 50);
 
     // Export button
     const exportBtn = document.createElement('button');
