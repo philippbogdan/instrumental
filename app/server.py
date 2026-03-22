@@ -277,12 +277,63 @@ def _detect_pitch(audio_np: np.ndarray, sr: int = 44100) -> float:
 # Module-level globals for multiprocessing workers
 _WORKER_TARGET_NOTES = []
 
+# Indices of the 13 params CMA-ES optimizes (the rest are frozen)
+# Chosen by round-trip recovery test: only params consistently recovered
+OPTIMIZED_INDICES = [
+    0,   # saw_mix
+    2,   # sine_mix
+    3,   # noise_mix
+    4,   # detune
+    5,   # filter_cutoff
+    6,   # filter_resonance
+    7,   # attack
+    8,   # decay
+    9,   # sustain
+    10,  # release
+    11,  # gain
+    12,  # filter_env
+    22,  # pulse_width
+]
+N_OPTIMIZED = len(OPTIMIZED_INDICES)
 
-def _evaluate_single(params_np):
+# Frozen defaults for the other 15 params (sensible neutral values)
+FROZEN_DEFAULTS = np.full(N_PARAMS, 0.5, dtype=np.float32)
+FROZEN_DEFAULTS[1] = 0.0    # square_mix — degenerate with saw
+FROZEN_DEFAULTS[13] = 0.3   # reverb_size
+FROZEN_DEFAULTS[14] = 0.05  # reverb_mix — nearly dry
+FROZEN_DEFAULTS[15] = 0.0   # unison_voices — 1 voice
+FROZEN_DEFAULTS[16] = 0.0   # unison_spread — none
+FROZEN_DEFAULTS[17] = 0.0   # noise_floor — none
+FROZEN_DEFAULTS[18] = 0.05  # filter_attack
+FROZEN_DEFAULTS[19] = 0.3   # filter_decay
+FROZEN_DEFAULTS[20] = 0.5   # filter_sustain
+FROZEN_DEFAULTS[21] = 0.3   # filter_release
+FROZEN_DEFAULTS[23] = 0.25  # filter_slope — gentle
+FROZEN_DEFAULTS[24] = 0.5   # eq1_freq — mid
+FROZEN_DEFAULTS[25] = 0.5   # eq1_gain — 0dB
+FROZEN_DEFAULTS[26] = 0.5   # eq2_freq — mid
+FROZEN_DEFAULTS[27] = 0.5   # eq2_gain — 0dB
+
+
+def _expand_params(reduced_np):
+    """Expand 13 optimized params into full 28 by injecting frozen defaults."""
+    full = FROZEN_DEFAULTS.copy()
+    for i, idx in enumerate(OPTIMIZED_INDICES):
+        full[idx] = reduced_np[i]
+    return full
+
+
+def _reduce_params(full_np):
+    """Extract the 13 optimized params from a full 28-param vector."""
+    return np.array([full_np[idx] for idx in OPTIMIZED_INDICES], dtype=np.float32)
+
+
+def _evaluate_single(reduced_np):
     """Evaluate a single candidate in a worker process."""
     synth = SynthPatch()
     loss_fn = get_loss("matching")
-    params = torch.tensor(params_np, dtype=torch.float32)
+    full_np = _expand_params(reduced_np)
+    params = torch.tensor(full_np, dtype=torch.float32)
     total = 0.0
     for audio_np, freq, dur in _WORKER_TARGET_NOTES:
         target = torch.tensor(audio_np, dtype=torch.float32).unsqueeze(0)
@@ -307,13 +358,16 @@ def _run_cmaes(
     loop: asyncio.AbstractEventLoop,
     note_data_for_result: Optional[list] = None,
 ):
-    """Run CMA-ES with CPU multiprocessing."""
+    """Run CMA-ES with CPU multiprocessing in reduced 13D param space."""
     sigma0 = 0.15
     n_cores = max(1, multiprocessing.cpu_count() - 1)
     popsize = max(16, n_cores * 2)
 
-    es = cma.CMAEvolutionStrategy(x0, sigma0, {
-        "bounds": [[0] * N_PARAMS, [1] * N_PARAMS],
+    # Reduce x0 from 28D to 13D
+    x0_reduced = _reduce_params(x0)
+
+    es = cma.CMAEvolutionStrategy(x0_reduced, sigma0, {
+        "bounds": [[0] * N_OPTIMIZED, [1] * N_OPTIMIZED],
         "maxfevals": n_evals,
         "popsize": popsize,
         "verbose": -9,
@@ -345,9 +399,9 @@ def _run_cmaes(
             }
             loop.call_soon_threadsafe(queue.put_nowait, msg)
 
-    # Build param_defs for frontend
+    # Expand best result from 13D back to 28D
     param_defs = [{"name": name, "lo": lo, "hi": hi} for name, lo, hi in PARAM_DEFS]
-    best_params = list(es.result.xbest)
+    best_params = list(_expand_params(es.result.xbest))
 
     complete_msg = {
         "type": "complete",
