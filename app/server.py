@@ -132,6 +132,29 @@ async def _load_audio_from_upload(file: UploadFile):
 
 MIN_NOTE_SAMPLES = 4500  # ~0.1s at 44100Hz, enough for loss function STFTs
 
+
+def _harmonic_clean(audio_np, f0_hz, sr=44100, bandwidth_hz=20):
+    """Remove non-harmonic content via comb filter in frequency domain.
+
+    Keeps energy at f0, 2*f0, 3*f0... with ±bandwidth_hz around each harmonic.
+    Everything else (bleed from other instruments) is zeroed out.
+    """
+    n = len(audio_np)
+    spectrum = np.fft.rfft(audio_np)
+    freqs = np.fft.rfftfreq(n, d=1.0 / sr)
+
+    # Build harmonic mask
+    mask = np.zeros_like(freqs)
+    harmonic = f0_hz
+    while harmonic < sr / 2:
+        mask[(freqs >= harmonic - bandwidth_hz) & (freqs <= harmonic + bandwidth_hz)] = 1.0
+        harmonic += f0_hz
+
+    # Apply mask and reconstruct
+    cleaned = np.fft.irfft(spectrum * mask, n=n)
+    return cleaned.astype(np.float32)
+
+
 def _extract_notes(audio_np: np.ndarray, sr: int = 44100, max_notes: int = 3, max_note_dur: float = 0.5):
     """
     Extract individual notes from audio via onset detection + pitch tracking.
@@ -195,7 +218,9 @@ def _extract_notes(audio_np: np.ndarray, sr: int = 44100, max_notes: int = 3, ma
         if freq < 50 or freq > 2000 or np.isnan(freq):
             continue
 
-        notes.append({"audio": seg_audio, "freq": freq, "duration": duration, "onset": onset})
+        # Clean: keep only harmonic energy, remove Demucs bleed
+        cleaned = _harmonic_clean(seg_audio, freq, sr)
+        notes.append({"audio": cleaned, "freq": freq, "duration": duration, "onset": onset})
 
     if len(notes) == 0:
         # F3 fallback
