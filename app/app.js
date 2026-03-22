@@ -183,7 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
     container.appendChild(kbContainer);
 
     if (keyboard) keyboard.destroy();
-    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 2, numOctaves: 4 });
+    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 3, numOctaves: 3 });
     keyboard.render();
     kbContainer.style.position = 'relative';
     // Center scroll on the playable range (C4=60 to F5=77, midpoint ~G#4=68)
@@ -944,7 +944,7 @@ document.addEventListener('DOMContentLoaded', () => {
     container.appendChild(kbContainer);
 
     if (keyboard) keyboard.destroy();
-    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 2, numOctaves: 4 });
+    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 3, numOctaves: 3 });
     keyboard.render();
     kbContainer.style.position = 'relative';
     // Center scroll on the playable range (C4=60 to F5=77, midpoint ~G#4=68)

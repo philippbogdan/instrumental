@@ -36,7 +36,7 @@ class PianoKeyboard {
     //          C D E F G A B C D E F
     // Sharps:  W E   T Y U   O P
     //          C# D#  F# G# A#  C# D#
-    const base = this.startNote + 24; // Offset to C4 = 60
+    const base = this.startNote + 12; // Offset to one octave above start
     return {
       // Home row: white keys
       'a': base + 0,   // C4
