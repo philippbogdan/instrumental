@@ -31,42 +31,33 @@ class PianoKeyboard {
   }
 
   _buildKeyMap() {
-    // DAW-style layout: home row = white keys, top row = sharps
-    // H = C4, so counting back: A=E3, S=F3, D=G3, F=A3, G=B3
-    // Forward: H=C4, J=D4, K=E4, L=F4, ;=G4
-    // Bottom row for lowest: Z=C3, X=D3
-    // Top row sharps positioned above gaps between white keys
+    // Standard piano layout: A=C, home row = white keys, top row = sharps
+    // Matches: A S D F G H J K L ; '
+    //          C D E F G A B C D E F
+    // Sharps:  W E   T Y U   O P
+    //          C# D#  F# G# A#  C# D#
     const base = this.startNote; // C3 = 48
     return {
-      // Bottom row: C3, D3
-      'z': base + 0,   // C3
-      'x': base + 2,   // D3
-      // Home row: white keys E3 through G4
-      'a': base + 4,   // E3
-      's': base + 5,   // F3
-      'd': base + 7,   // G3
-      'f': base + 9,   // A3
-      'g': base + 11,  // B3
-      'h': base + 12,  // C4
-      'j': base + 14,  // D4
-      'k': base + 16,  // E4
-      'l': base + 17,  // F4
-      ';': base + 19,  // G4
-      "'": base + 21,  // A4
-      // Top row: sharps (positioned above home row gaps)
-      // W between A(E3) and S(F3) -> no sharp (E#=F), skip
-      'e': base + 6,   // F#3  (between S=F3 and D=G3)
-      'r': base + 8,   // G#3  (between D=G3 and F=A3)
-      't': base + 10,  // A#3  (between F=A3 and G=B3)
-      // Y between G(B3) and H(C4) -> no sharp (B#=C), skip
-      'u': base + 13,  // C#4  (between H=C4 and J=D4)
-      'i': base + 15,  // D#4  (between J=D4 and K=E4)
-      // O between K(E4) and L(F4) -> no sharp (E#=F), skip
-      'o': base + 18,  // F#4  (between L=F4 and ;=G4)
-      'p': base + 20,  // G#4  (between ;=G4 and '=A4)
-      '[': base + 22,  // A#4  (after '=A4)
-      // Extra: B4
-      '\\': base + 23, // B4
+      // Home row: white keys
+      'a': base + 0,   // C3
+      's': base + 2,   // D3
+      'd': base + 4,   // E3
+      'f': base + 5,   // F3
+      'g': base + 7,   // G3
+      'h': base + 9,   // A3
+      'j': base + 11,  // B3
+      'k': base + 12,  // C4
+      'l': base + 14,  // D4
+      ';': base + 16,  // E4
+      "'": base + 17,  // F4
+      // Top row: sharps
+      'w': base + 1,   // C#3  (between A=C and S=D)
+      'e': base + 3,   // D#3  (between S=D and D=E)
+      't': base + 6,   // F#3  (between F=F and G=G)
+      'y': base + 8,   // G#3  (between G=G and H=A)
+      'u': base + 10,  // A#3  (between H=A and J=B)
+      'o': base + 13,  // C#4  (between K=C and L=D)
+      'p': base + 15,  // D#4  (between L=D and ;=E)
     };
   }
 
