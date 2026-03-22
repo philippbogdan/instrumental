@@ -168,8 +168,9 @@ def params_to_vital(params_normalized, param_defs):
             preset["modulations"] = []
         preset["modulations"].append(mod_entry)
 
-    # --- Master gain (boost for usability) ---
-    s["volume"] = min(1.0, p["gain"] * 2.0)  # Boost: our 0-1 range maps to 0-2x, clamped
+    # --- Master gain ---
+    # Vital's volume is NOT 0-1. Template uses ~5473. Scale our gain to a similar range.
+    s["volume"] = p["gain"] * 5473.0
 
     # --- Reverb ---
     s["reverb_on"] = 1.0 if p["reverb_mix"] > 0.01 else 0.0
