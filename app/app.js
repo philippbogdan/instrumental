@@ -68,6 +68,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (playerSection) playerSection.classList.add('hidden');
       if (stemSection) stemSection.classList.add('hidden');
       progressSection.classList.add('hidden');
+      const wildSec = document.getElementById('wildSection');
+      if (wildSec) wildSec.classList.add('hidden');
       resultSection.classList.remove('hidden');
 
       // Load pre-baked demo data
