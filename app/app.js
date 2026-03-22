@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let analyzedDuration = 10;
   let selectedNoteForMatch = 0;
   let separationStems = null;
+  let isWildGround = false;
 
   // DOM refs
   const dropZone = document.getElementById('dropZone');
@@ -41,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const dawSection = document.getElementById('dawSection');
   const dawContainer = document.getElementById('dawContainer');
   const dawPlayBtn = document.getElementById('dawPlayBtn');
-  const searchSection = document.getElementById('searchSection');
+  const searchSection = document.getElementById('wildSection');
   const searchInput = document.getElementById('searchInput');
   const searchBtn = document.getElementById('searchBtn');
   const searchResults = document.getElementById('searchResults');
@@ -375,6 +376,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function selectSearchResult(track) {
+    isWildGround = true;
     searchResults.classList.add('hidden');
     searchResults.innerHTML = '';
 
@@ -412,9 +414,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Hide input sections
     dropZone.classList.add('hidden');
-    searchSection.classList.add('hidden');
     playerSection.classList.add('hidden');
     if (dividerOr) dividerOr.classList.add('hidden');
+    const demoSec = document.getElementById('demoSection');
+    const wildSec = document.getElementById('wildSection');
+    if (demoSec) demoSec.classList.add('hidden');
+    if (wildSec) wildSec.classList.add('hidden');
 
     // Phase 1: Show skeleton stems with ETA while Demucs runs
     stemSection.classList.remove('hidden');
@@ -979,6 +984,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function round12(freq) {
       return Math.round(12 * Math.log2(freq / 440) + 69);
+    }
+
+    // Quality notice for wild ground runs
+    if (isWildGround) {
+      const notice = document.createElement('div');
+      notice.className = 'quality-notice';
+      notice.innerHTML =
+        '<div class="quality-notice-header">' +
+        '? Why does it sound different from the original?' +
+        '</div>' +
+        '<div class="quality-notice-body">' +
+        'This method is extremely sensitive to the quality of the input notes. ' +
+        'When we separate a full song into stems, even small amounts of bleed from ' +
+        'vocals, drums, or bass contaminate the synth audio. The optimizer then tries ' +
+        'to match this noise instead of the actual synth sound.' +
+        '<br><br>' +
+        'The cherrypicked examples on the landing page use clean, manually recorded ' +
+        'synth samples — that\'s why they sound much closer to the original.' +
+        '<br><br>' +
+        'For best results, upload a clean recording of just the synth part.' +
+        '</div>';
+      notice.addEventListener('click', () => notice.classList.toggle('open'));
+      container.appendChild(notice);
     }
   }
 
