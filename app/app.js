@@ -186,11 +186,11 @@ document.addEventListener('DOMContentLoaded', () => {
     keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 2, numOctaves: 4 });
     keyboard.render();
     kbContainer.style.position = 'relative';
-    // Center scroll on the playable range (C3=48 to F4=65, midpoint ~E3=52)
+    // Center scroll on the playable range (C4=60 to F5=77, midpoint ~G#4=68)
     setTimeout(() => {
-      const midKey = kbContainer.querySelector('[data-note="52"]'); // E3 = midpoint of playable range
+      const midKey = kbContainer.querySelector('[data-note="68"]'); // G#4
       if (midKey) {
-        const offset = midKey.offsetLeft - kbContainer.offsetWidth / 2 + midKey.offsetWidth / 2;
+        const offset = midKey.offsetLeft - kbContainer.offsetWidth / 2;
         kbContainer.scrollLeft = Math.max(0, offset);
       }
     }, 50);
@@ -947,11 +947,11 @@ document.addEventListener('DOMContentLoaded', () => {
     keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 2, numOctaves: 4 });
     keyboard.render();
     kbContainer.style.position = 'relative';
-    // Center scroll on the playable range (C3=48 to F4=65, midpoint ~E3=52)
+    // Center scroll on the playable range (C4=60 to F5=77, midpoint ~G#4=68)
     setTimeout(() => {
-      const midKey = kbContainer.querySelector('[data-note="52"]'); // E3 = midpoint of playable range
+      const midKey = kbContainer.querySelector('[data-note="68"]'); // G#4
       if (midKey) {
-        const offset = midKey.offsetLeft - kbContainer.offsetWidth / 2 + midKey.offsetWidth / 2;
+        const offset = midKey.offsetLeft - kbContainer.offsetWidth / 2;
         kbContainer.scrollLeft = Math.max(0, offset);
       }
     }, 50);

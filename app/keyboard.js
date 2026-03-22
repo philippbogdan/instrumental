@@ -36,28 +36,28 @@ class PianoKeyboard {
     //          C D E F G A B C D E F
     // Sharps:  W E   T Y U   O P
     //          C# D#  F# G# A#  C# D#
-    const base = this.startNote; // C3 = 48
+    const base = this.startNote + 24; // Offset to C4 = 60
     return {
       // Home row: white keys
-      'a': base + 0,   // C3
-      's': base + 2,   // D3
-      'd': base + 4,   // E3
-      'f': base + 5,   // F3
-      'g': base + 7,   // G3
-      'h': base + 9,   // A3
-      'j': base + 11,  // B3
-      'k': base + 12,  // C4
-      'l': base + 14,  // D4
-      ';': base + 16,  // E4
-      "'": base + 17,  // F4
+      'a': base + 0,   // C4
+      's': base + 2,   // D4
+      'd': base + 4,   // E4
+      'f': base + 5,   // F4
+      'g': base + 7,   // G4
+      'h': base + 9,   // A4
+      'j': base + 11,  // B4
+      'k': base + 12,  // C5
+      'l': base + 14,  // D5
+      ';': base + 16,  // E5
+      "'": base + 17,  // F5
       // Top row: sharps
-      'w': base + 1,   // C#3  (between A=C and S=D)
-      'e': base + 3,   // D#3  (between S=D and D=E)
-      't': base + 6,   // F#3  (between F=F and G=G)
-      'y': base + 8,   // G#3  (between G=G and H=A)
-      'u': base + 10,  // A#3  (between H=A and J=B)
-      'o': base + 13,  // C#4  (between K=C and L=D)
-      'p': base + 15,  // D#4  (between L=D and ;=E)
+      'w': base + 1,   // C#4
+      'e': base + 3,   // D#4
+      't': base + 6,   // F#4
+      'y': base + 8,   // G#4
+      'u': base + 10,  // A#4
+      'o': base + 13,  // C#5
+      'p': base + 15,  // D#5
     };
   }
 
