@@ -826,7 +826,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const resp = await fetch('/api/job-result/' + jobId);
       const data = await resp.json();
-      if (data.type === 'complete' || data.params) {
+      if (data.type === 'complete') {
         completed = true;
         handleComplete(data);
         return;
