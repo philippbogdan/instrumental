@@ -263,6 +263,48 @@ document.addEventListener('DOMContentLoaded', () => {
     return Math.round(remaining / 60) + 'm ' + Math.round(remaining % 60) + 's left';
   }
 
+  // ── Live knobs during optimization ──────────────────────────────────
+
+  // Which params to show as knobs (indices into PARAM_DEFS, most interesting ones)
+  const KNOB_PARAMS = [
+    { idx: 0, name: 'Saw' },
+    { idx: 1, name: 'Square' },
+    { idx: 5, name: 'Cutoff' },
+    { idx: 6, name: 'Res' },
+    { idx: 9, name: 'Sustain' },
+    { idx: 11, name: 'Gain' },
+  ];
+
+  function _initKnobs() {
+    const container = document.getElementById('knobsContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    for (const kp of KNOB_PARAMS) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'knob-wrapper';
+      wrapper.innerHTML =
+        '<div class="knob" data-knob-idx="' + kp.idx + '">' +
+        '<div class="knob-indicator"></div>' +
+        '</div>' +
+        '<div class="knob-label">' + kp.name + '</div>' +
+        '<div class="knob-value" data-knob-val="' + kp.idx + '">--</div>';
+      container.appendChild(wrapper);
+    }
+  }
+
+  function _updateKnobs(params) {
+    if (!params || params.length === 0) return;
+    for (const kp of KNOB_PARAMS) {
+      const val = params[kp.idx] || 0; // normalized 0-1
+      // Rotate indicator: 0 = -135deg (7 o'clock), 1 = +135deg (5 o'clock)
+      const deg = -135 + val * 270;
+      const indicator = document.querySelector('.knob[data-knob-idx="' + kp.idx + '"] .knob-indicator');
+      if (indicator) indicator.style.transform = 'rotate(' + deg + 'deg)';
+      const valEl = document.querySelector('[data-knob-val="' + kp.idx + '"]');
+      if (valEl) valEl.textContent = val.toFixed(2);
+    }
+  }
+
   // ── Helper: lazy AudioContext + Synth init ──────────────────────────
 
   function ensureAudioCtx() {
@@ -700,6 +742,7 @@ document.addEventListener('DOMContentLoaded', () => {
     evalCount.textContent = '0 / 10,000';
     currentLoss.textContent = 'Loss: --';
     elapsedTime.textContent = '0s';
+    _initKnobs();
 
     const endpoint = '/api/match-single';
 
@@ -755,6 +798,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const eta = formatETA(data.evals, data.total_evals, data.elapsed_seconds);
           elapsedTime.textContent = Math.round(data.elapsed_seconds) + 's' + (eta ? ' (' + eta + ')' : '');
         }
+        if (data.params) _updateKnobs(data.params);
       } else if (data.type === 'complete') {
         completed = true;
         handleComplete(data);
@@ -805,6 +849,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const eta = formatETA(data.evals, data.total_evals, data.elapsed_seconds);
           elapsedTime.textContent = Math.round(data.elapsed_seconds) + 's' + (eta ? ' (' + eta + ')' : '');
         }
+        if (data.params) _updateKnobs(data.params);
       }
       // Retry after a delay
       setTimeout(() => pollForResult(jobId), 2000);

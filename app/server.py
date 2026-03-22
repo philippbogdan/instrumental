@@ -405,6 +405,7 @@ def _run_cmaes(
                     "total_evals": n_evals,
                     "best_loss": round(overall_best_loss, 4),
                     "elapsed_seconds": round(elapsed, 1),
+                    "params": [round(float(v), 3) for v in overall_best_params],
                 }
                 loop.call_soon_threadsafe(queue.put_nowait, msg)
 
