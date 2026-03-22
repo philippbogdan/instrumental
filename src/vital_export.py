@@ -106,10 +106,17 @@ def params_to_vital(params_normalized, param_defs):
     s["osc_3_on"] = 1.0 if p["sine_mix"] > 0.01 else 0.0
     s["osc_3_level"] = p["sine_mix"]
 
-    # --- Route all oscillators to Filter 1 ---
-    s["osc_1_destination"] = 0.0  # Filter 1
-    s["osc_2_destination"] = 0.0  # Filter 1 (was 1.0 = Filter 2 which is off)
-    s["osc_3_destination"] = 0.0  # Filter 1 (was 3.0 = Direct Out)
+    # --- Route oscillators ---
+    if p["filter_cutoff"] > 10000:
+        # Filter off — route direct out
+        s["osc_1_destination"] = 2.0  # Direct Out
+        s["osc_2_destination"] = 2.0
+        s["osc_3_destination"] = 2.0
+    else:
+        # Route through Filter 1
+        s["osc_1_destination"] = 0.0
+        s["osc_2_destination"] = 0.0
+        s["osc_3_destination"] = 0.0
 
     # --- Noise ---
     noise_total = p["noise_mix"] + p["noise_floor"]
@@ -131,8 +138,13 @@ def params_to_vital(params_normalized, param_defs):
     s["osc_2_wave_frame"] = p["pulse_width"]
 
     # --- Filter ---
-    s["filter_1_on"] = 1.0
-    s["filter_1_cutoff"] = min(128.0, hz_to_midi_note(p["filter_cutoff"]))  # Clamp to Vital's range
+    filter_midi = min(128.0, hz_to_midi_note(p["filter_cutoff"]))
+    # If filter is wide open (cutoff > 10kHz), turn it off to avoid artifacts
+    if p["filter_cutoff"] > 10000:
+        s["filter_1_on"] = 0.0
+    else:
+        s["filter_1_on"] = 1.0
+    s["filter_1_cutoff"] = filter_midi
     s["filter_1_resonance"] = p["filter_resonance"]
     s["filter_1_mix"] = 1.0
 
