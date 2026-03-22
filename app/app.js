@@ -183,7 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
     container.appendChild(kbContainer);
 
     if (keyboard) keyboard.destroy();
-    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 1, numOctaves: 4 });
+    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 2, numOctaves: 4 });
     keyboard.render();
     kbContainer.style.position = 'relative';
     // No scroll centering needed — keyboard fits in view
@@ -937,7 +937,7 @@ document.addEventListener('DOMContentLoaded', () => {
     container.appendChild(kbContainer);
 
     if (keyboard) keyboard.destroy();
-    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 1, numOctaves: 4 });
+    keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 2, numOctaves: 4 });
     keyboard.render();
     kbContainer.style.position = 'relative';
     // No scroll centering needed — keyboard fits in view

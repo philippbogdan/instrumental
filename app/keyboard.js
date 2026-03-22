@@ -36,7 +36,7 @@ class PianoKeyboard {
     //          C D E F G A B C D E F
     // Sharps:  W E   T Y U   O P
     //          C# D#  F# G# A#  C# D#
-    const base = this.startNote; // Start at C3
+    const base = 48; // Always C3, regardless of visual keyboard range
     return {
       // Home row: white keys
       'a': base + 0,   // C4
