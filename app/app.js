@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedNoteForMatch = 0;
   let separationStems = null;
   let isWildGround = false;
+  let _activeAudios = []; // track playing audio elements for cleanup
 
   // DOM refs
   const dropZone = document.getElementById('dropZone');
@@ -57,6 +58,10 @@ document.addEventListener('DOMContentLoaded', () => {
     card.addEventListener('click', async () => {
       const demoId = card.dataset.demo;
       if (!demoId) return;
+
+      // Stop any playing audio
+      _activeAudios.forEach(a => { a.pause(); a.src = ''; });
+      _activeAudios = [];
 
       // Highlight active card
       document.querySelectorAll('.demo-card').forEach(c => c.classList.remove('active'));
@@ -97,6 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cacheBust = '?v=21';
     const origAudio = new Audio('/demos/' + demoId + '_original.wav' + cacheBust);
     const matchAudio = new Audio('/demos/' + demoId + '_matched.wav' + cacheBust);
+    _activeAudios = [origAudio, matchAudio];
     let masterDur = demoData.duration;
 
     // Track rows
