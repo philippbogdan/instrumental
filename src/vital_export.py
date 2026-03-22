@@ -61,15 +61,18 @@ def _make_sine_wavetable():
 def _build_wavetable_entry(name, wave_data):
     """Build a single Vital wavetable entry with proper structure."""
     return {
+        "author": "",
+        "full_normalize": True,
         "name": name,
-        "full_normalize": False,
-        "remove_all_dc": False,
+        "remove_all_dc": True,
+        "version": "1.0.7",
         "groups": [
             {
                 "components": [
                     {
                         "type": "Wave Source",
                         "interpolation": 1,
+                        "interpolation_style": 1,
                         "keyframes": [
                             {"position": 0, "wave_data": wave_data}
                         ]
