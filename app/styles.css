@@ -933,9 +933,39 @@ header {
   background: var(--amaranth-dim);
 }
 
+.stem-header {
+  display: flex;
+  align-items: center;
+  padding: 0 12px 4px 0;
+}
+
+.stem-header-spacer {
+  flex: 1;
+}
+
+.stem-header-dl {
+  width: 32px;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--black-mid);
+}
+
+.stem-outer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stem-outer .stem-row {
+  flex: 1;
+}
+
 .stem-checkbox {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
   accent-color: var(--amaranth);
   cursor: pointer;

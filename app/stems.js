@@ -22,6 +22,12 @@ class StemDisplay {
     this._checked.clear();
     const stemOrder = ['vocals', 'drums', 'bass', 'guitar', 'piano', 'other'];
 
+    // Header row
+    const header = document.createElement('div');
+    header.className = 'stem-header';
+    header.innerHTML = '<div class="stem-header-spacer"></div><div class="stem-header-dl">\u2913</div>';
+    this.container.appendChild(header);
+
     for (const name of stemOrder) {
       const url = stemUrls[name];
       if (!url) continue;
@@ -68,8 +74,12 @@ class StemDisplay {
       row.appendChild(playBtn);
       row.appendChild(label);
       row.appendChild(waveDiv);
-      row.appendChild(cb);
-      this.container.appendChild(row);
+
+      const outer = document.createElement('div');
+      outer.className = 'stem-outer';
+      outer.appendChild(row);
+      outer.appendChild(cb);
+      this.container.appendChild(outer);
 
       this._rows[name] = { el: row, playBtn, waveDiv, playhead, canvas, url };
 
