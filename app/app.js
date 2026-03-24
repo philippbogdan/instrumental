@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedNoteForMatch = 0;
   let separationStems = null;
   let isWildGround = false;
+  let currentSongName = '';
   let _activeAudios = []; // track playing audio elements for cleanup
 
   // DOM refs
@@ -444,6 +445,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function selectSearchResult(track) {
     isWildGround = true;
     _track('search_select', { title: track.title, artist: track.artist?.name });
+    currentSongName = (track.artist?.name || '') + ' - ' + (track.title || 'Unknown');
     searchResults.classList.add('hidden');
     searchResults.innerHTML = '';
 
@@ -557,6 +559,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (stemDisplay) stemDisplay.destroy();
         stemDisplay = new StemDisplay(stemContainer, audioCtx);
+        stemDisplay.songName = currentSongName;
         stemDisplay.setStems(separationStems);
 
         // Add "Start Matching" button below stems

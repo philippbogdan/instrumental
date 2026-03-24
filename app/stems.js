@@ -6,27 +6,34 @@ class StemDisplay {
     this._callback = null;
     this._rows = {};
     this._buffers = {};
-    this._playing = null;  // {name, source, btn, startTime, duration, rafId}
+    this._checked = new Set();
+    this._playing = null;
+    this._dlBar = null;
+    this.songName = '';
+  }
+
+  _safeName() {
+    return (this.songName || 'track').replace(/[^a-zA-Z0-9_\- ]/g, '').replace(/\s+/g, '_').toLowerCase();
   }
 
   setStems(stemUrls) {
     this.container.innerHTML = '';
     this.stopPlayback();
+    this._checked.clear();
     const stemOrder = ['vocals', 'drums', 'bass', 'guitar', 'piano', 'other'];
-    // Only show stems that the server returned
 
     for (const name of stemOrder) {
       const url = stemUrls[name];
       if (!url) continue;
 
       const row = document.createElement('div');
-      row.className = 'stem-row loading';  // Start as loading skeleton
+      row.className = 'stem-row loading';
 
       const playBtn = document.createElement('button');
       playBtn.className = 'stem-play-btn';
       playBtn.textContent = '\u25B6';
       playBtn.title = 'Preview ' + name;
-      playBtn.disabled = true;  // Disabled until waveform loads
+      playBtn.disabled = true;
       playBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this._togglePlay(name, playBtn);
@@ -39,27 +46,32 @@ class StemDisplay {
       const waveDiv = document.createElement('div');
       waveDiv.className = 'stem-waveform';
       const canvas = document.createElement('canvas');
-      // Playhead overlay
       const playhead = document.createElement('div');
       playhead.className = 'stem-playhead';
       waveDiv.appendChild(canvas);
       waveDiv.appendChild(playhead);
 
-      const dlBtn = document.createElement('a');
-      dlBtn.className = 'stem-dl-btn';
-      dlBtn.href = url;
-      dlBtn.download = name + '.wav';
-      dlBtn.title = 'Download ' + name;
-      dlBtn.textContent = '\u2913';
-      dlBtn.addEventListener('click', (e) => e.stopPropagation());
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'stem-checkbox';
+      cb.title = 'Select for download';
+      cb.addEventListener('click', (e) => e.stopPropagation());
+      cb.addEventListener('change', () => {
+        if (cb.checked) {
+          this._checked.add(name);
+        } else {
+          this._checked.delete(name);
+        }
+        this._updateDlBar();
+      });
 
       row.appendChild(playBtn);
       row.appendChild(label);
       row.appendChild(waveDiv);
-      row.appendChild(dlBtn);
+      row.appendChild(cb);
       this.container.appendChild(row);
 
-      this._rows[name] = { el: row, playBtn, waveDiv, playhead, canvas };
+      this._rows[name] = { el: row, playBtn, waveDiv, playhead, canvas, url };
 
       row.addEventListener('click', () => {
         Object.values(this._rows).forEach(r => r.el.classList.remove('selected'));
@@ -70,6 +82,106 @@ class StemDisplay {
 
       this._loadWaveform(url, canvas, name);
     }
+
+    // Download bar (hidden initially)
+    this._dlBar = document.createElement('div');
+    this._dlBar.className = 'stem-dl-bar hidden';
+    this._dlBar.innerHTML =
+      '<span class="stem-dl-bar-label">Download selected stems</span>' +
+      '<button class="stem-dl-bar-btn">Download .wav</button>';
+    this._dlBar.querySelector('.stem-dl-bar-btn').addEventListener('click', () => this._downloadMix());
+    this.container.appendChild(this._dlBar);
+  }
+
+  _updateDlBar() {
+    if (!this._dlBar) return;
+    if (this._checked.size > 0) {
+      const names = Array.from(this._checked).join(' + ');
+      this._dlBar.querySelector('.stem-dl-bar-label').textContent = names;
+      this._dlBar.classList.remove('hidden');
+    } else {
+      this._dlBar.classList.add('hidden');
+    }
+  }
+
+  async _downloadMix() {
+    const names = Array.from(this._checked);
+    if (names.length === 0) return;
+
+    const base = this._safeName();
+
+    // If only one stem, download directly
+    if (names.length === 1) {
+      const row = this._rows[names[0]];
+      if (row && row.url) {
+        const a = document.createElement('a');
+        a.href = row.url;
+        a.download = base + '_' + names[0] + '.wav';
+        a.click();
+      }
+      return;
+    }
+
+    // Mix multiple stems client-side
+    const buffers = names.map(n => this._buffers[n]).filter(Boolean);
+    if (buffers.length === 0) return;
+
+    const sr = buffers[0].sampleRate;
+    const maxLen = Math.max(...buffers.map(b => b.length));
+    const mixed = new Float32Array(maxLen);
+
+    for (const buf of buffers) {
+      const ch = buf.getChannelData(0);
+      for (let i = 0; i < ch.length; i++) {
+        mixed[i] += ch[i];
+      }
+    }
+
+    // Normalize
+    let peak = 0;
+    for (let i = 0; i < mixed.length; i++) {
+      const abs = Math.abs(mixed[i]);
+      if (abs > peak) peak = abs;
+    }
+    if (peak > 0.99) {
+      const scale = 0.95 / peak;
+      for (let i = 0; i < mixed.length; i++) mixed[i] *= scale;
+    }
+
+    // Encode as WAV
+    const wavBlob = this._encodeWav(mixed, sr);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(wavBlob);
+    a.download = base + '_' + names.join('_') + '.wav';
+    a.click();
+  }
+
+  _encodeWav(samples, sampleRate) {
+    const len = samples.length;
+    const buffer = new ArrayBuffer(44 + len * 2);
+    const view = new DataView(buffer);
+    const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + len * 2, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, 1, true); // mono
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, len * 2, true);
+
+    for (let i = 0; i < len; i++) {
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    }
+
+    return new Blob([buffer], { type: 'audio/wav' });
   }
 
   async _loadWaveform(url, canvas, name) {
@@ -82,7 +194,6 @@ class StemDisplay {
       const w = canvas.parentElement ? canvas.parentElement.clientWidth : 500;
       viz.setSize(w, 36);
       viz.drawWaveform(audioBuf);
-      // Remove loading state and enable play
       const row = this._rows[name];
       if (row) {
         row.el.classList.remove('loading');
@@ -118,7 +229,6 @@ class StemDisplay {
 
     this._playing = { name, source, btn, startTime, duration };
 
-    // Animate playhead
     const animate = () => {
       if (!this._playing || this._playing.name !== name) return;
       const elapsed = this.audioCtx.currentTime - startTime;
@@ -170,5 +280,6 @@ class StemDisplay {
     this.container.innerHTML = '';
     this._rows = {};
     this._buffers = {};
+    this._checked.clear();
   }
 }
