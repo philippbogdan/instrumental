@@ -933,6 +933,28 @@ header {
   background: var(--amaranth-dim);
 }
 
+.stem-dl-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--black-dim);
+  background: transparent;
+  color: var(--black-mid);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  text-decoration: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.stem-dl-btn:hover {
+  border-color: var(--amaranth);
+  color: var(--amaranth);
+}
+
 .stem-row.loading {
   animation: stemPulse 1.5s ease-in-out infinite;
 }

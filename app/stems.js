@@ -45,9 +45,18 @@ class StemDisplay {
       waveDiv.appendChild(canvas);
       waveDiv.appendChild(playhead);
 
+      const dlBtn = document.createElement('a');
+      dlBtn.className = 'stem-dl-btn';
+      dlBtn.href = url;
+      dlBtn.download = name + '.wav';
+      dlBtn.title = 'Download ' + name;
+      dlBtn.textContent = '\u2913';
+      dlBtn.addEventListener('click', (e) => e.stopPropagation());
+
       row.appendChild(playBtn);
       row.appendChild(label);
       row.appendChild(waveDiv);
+      row.appendChild(dlBtn);
       this.container.appendChild(row);
 
       this._rows[name] = { el: row, playBtn, waveDiv, playhead, canvas };
