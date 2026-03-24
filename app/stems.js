@@ -22,10 +22,17 @@ class StemDisplay {
     this._checked.clear();
     const stemOrder = ['vocals', 'drums', 'bass', 'guitar', 'piano', 'other'];
 
-    // Header row
+    // Header row with download icon above checkboxes
     const header = document.createElement('div');
     header.className = 'stem-header';
-    header.innerHTML = '<div class="stem-header-spacer"></div><div class="stem-header-dl">\u2913</div>';
+    header.innerHTML =
+      '<div class="stem-header-spacer"></div>' +
+      '<div class="stem-header-dl-icon">' +
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+          '<circle cx="12" cy="12" r="10"/>' +
+          '<path d="M12 8v6M9 12l3 3 3-3M8 16h8"/>' +
+        '</svg>' +
+      '</div>';
     this.container.appendChild(header);
 
     for (const name of stemOrder) {
