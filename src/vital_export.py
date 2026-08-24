@@ -13,15 +13,31 @@ import struct
 import base64
 import numpy as np
 
-# Path to the Vital template preset (ships with Syntheon)
+# The base preset every export is written on top of. It used to be reached
+# through a vendor/syntheon gitlink with no .gitmodules entry, so a clone never
+# had it and every export failed; the one file it needed now lives in the repo.
 TEMPLATE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "vendor", "syntheon", "syntheon", "inferencer", "vital", "init.vital"
+    "vendor", "vital", "init.vital"
 )
 
-# Load template once at import time
-with open(TEMPLATE_PATH) as f:
-    _TEMPLATE = json.load(f)
+_TEMPLATE = None
+
+
+def _template():
+    """Read the base preset once, on first export rather than on import.
+
+    At import time a missing file takes the whole server down with it; here it
+    is one failed export with a message that says what is missing.
+    """
+    global _TEMPLATE
+    if _TEMPLATE is None:
+        if not os.path.exists(TEMPLATE_PATH):
+            raise FileNotFoundError(
+                f"Vital base preset missing at {TEMPLATE_PATH}. See vendor/vital/README.md.")
+        with open(TEMPLATE_PATH) as f:
+            _TEMPLATE = json.load(f)
+    return _TEMPLATE
 
 
 def hz_to_midi_note(hz):
@@ -95,7 +111,7 @@ def params_to_vital(params_normalized, param_defs):
         p[pd["name"]] = val * (hi - lo) + lo
 
     # Deep copy template
-    preset = copy.deepcopy(_TEMPLATE)
+    preset = copy.deepcopy(_template())
     s = preset["settings"]
 
     # --- Oscillator levels ---
