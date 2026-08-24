@@ -1,0 +1,16 @@
+# Cloudflare tunnel for the matching backend.
+# Copy to ~/.cloudflared/config.yml and fill in the UUID that
+# `cloudflared tunnel create instrumental` printed.
+
+tunnel: REPLACE-WITH-TUNNEL-UUID
+credentials-file: /Users/phil/.cloudflared/REPLACE-WITH-TUNNEL-UUID.json
+
+ingress:
+  - hostname: api.philippbogdan.com
+    service: http://127.0.0.1:8801
+    originRequest:
+      # A match holds the connection while CMA-ES runs; the default 30s idle
+      # timeout would cut the progress socket mid-search.
+      connectTimeout: 30s
+      noTLSVerify: true
+  - service: http_status:404

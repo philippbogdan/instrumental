@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The matching backend for philippbogdan.com/instrumental.
+
+     Idle cost is the point: the process holds torch and a mel filterbank and
+     nothing else, about 400 MB, and the heavy work (Demucs, CMA-ES) runs on the
+     GPU inside a request and lets go afterwards. ProcessType Background keeps
+     it out of the way of whatever the machine is actually being used for.
+
+     Install:  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.philippbogdan.instrumental.plist
+     Stop:     launchctl bootout gui/$(id -u)/com.philippbogdan.instrumental
+     Logs:     ~/Library/Logs/instrumental.log
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.philippbogdan.instrumental</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/phil/.venv/default/bin/python</string>
+    <string>-c</string>
+    <string>import sys; sys.path.insert(0, "/Users/phil/instrumental"); import uvicorn; from app.server import app; uvicorn.run(app, host="127.0.0.1", port=8801, log_level="warning")</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/phil/instrumental</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- Per address, per hour. The queue cap is separate and lives in the app. -->
+    <key>INSTRUMENTAL_JOBS_PER_HOUR</key>
+    <string>12</string>
+    <key>INSTRUMENTAL_MAX_QUEUE</key>
+    <string>6</string>
+    <key>PYTORCH_ENABLE_MPS_FALLBACK</key>
+    <string>1</string>
+    <!-- launchd starts with a bare PATH, and Demucs shells out to ffmpeg to
+         decode the mp3 previews. Without this every song fails and only WAV
+         uploads work. -->
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/phil/Library/Logs/instrumental.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/phil/Library/Logs/instrumental.log</string>
+</dict>
+</plist>

@@ -1,9 +1,4 @@
 __pycache__/
 *.pyc
 .DS_Store
-output/
-notes/
-*.wav
-*.mp3
-target_raw.mp3
-.venv/
+events.jsonl

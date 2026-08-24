@@ -1113,3 +1113,20 @@ header {
     height: 150px;
   }
 }
+
+/* Backend unreachable: the machine that does the matching is off. Say so where
+   the controls are, and take away the controls that cannot work rather than
+   letting them fail on click. The cherrypicked demos are static and stay. */
+.offline-note {
+  display: none;
+  border: 1px solid #000;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  max-width: 46ch;
+}
+body.backend-offline .offline-note { display: block; }
+body.backend-offline .wild-options,
+body.backend-offline #dropZone,
+body.backend-offline #dividerOr { display: none; }
