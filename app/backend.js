@@ -45,12 +45,24 @@
     }
   };
 
-  // `new Audio(src)` never touches fetch, and the demo players use it.
+  // Audio never touches fetch, and it arrives two ways: `new Audio(src)` for
+  // the demo players, and `el.src = ...` for the separated stem in the result
+  // view. The second one is why the Original lane was silent on the deployed
+  // site: the stem URL stayed same-origin and 404d against the static host,
+  // while the matched lane played because it is a blob from a rewritten fetch.
   const NativeAudio = window.Audio;
   window.Audio = function (src) {
     return src === undefined ? new NativeAudio() : new NativeAudio(resolve(src).url);
   };
   window.Audio.prototype = NativeAudio.prototype;
+
+  const srcProp = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+  Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+    configurable: true,
+    enumerable: srcProp.enumerable,
+    get() { return srcProp.get.call(this); },
+    set(value) { srcProp.set.call(this, resolve(value).url); },
+  });
 
   const NativeWS = window.WebSocket;
   window.WebSocket = function (url, protocols) {
