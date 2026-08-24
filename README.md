@@ -1,11 +1,12 @@
 # INSTRUMENTAL
----
 
-Original sound:
-https://drive.google.com/file/d/15AEFooN2nJYRp53AskdhNJJ3ZVR4eLZI/view?usp=share_link
+**Try it: [philippbogdan.com/instrumental](https://philippbogdan.com/instrumental)**
+&nbsp;·&nbsp; Paper: [arXiv:2603.15905](https://arxiv.org/abs/2603.15905)
 
-Reconstructed sound:
-https://drive.google.com/file/d/1bIeXC0hk2hPyNghigaManP6mJDUll9YC/view?usp=share_link
+Search for a song or drop in a synth recording, and watch the patch being
+searched for. The matching runs on one Mac mini behind a Cloudflare tunnel, so
+when that machine is off the page says so and the pre-matched demos still play.
+Deployment notes, and what it costs to run, are in [deploy/](deploy/).
 
 ---
 **Automatic synthesizer parameter recovery from audio.**

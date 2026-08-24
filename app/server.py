@@ -10,6 +10,8 @@ import json
 import tempfile
 import shutil
 import subprocess
+import hashlib
+import secrets
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -485,17 +487,24 @@ def _run_cmaes(
 # Analytics
 # ---------------------------------------------------------------------------
 EVENTS_FILE = os.path.join(os.path.dirname(APP_DIR), "events.jsonl")
+_VISITOR_SALT = secrets.token_hex(16)
 
 
 @app.post("/api/event")
 async def track_event(request: Request):
     """Log a user event for analytics."""
     body = await request.json()
+    # A visitor id, not an address. This is a public site now, and the counts
+    # are the only thing the stats page ever wanted; keeping raw addresses in a
+    # file on a home machine would be collecting personal data for no purpose.
+    # Salted per process, so the ids do not survive a restart either.
+    key = _client_key(request)
     event = {
         "ts": time.time(),
         "type": body.get("type", "unknown"),
         "data": body.get("data", {}),
-        "ip": request.client.host if request.client else "unknown",
+        "visitor": hashlib.blake2s((_VISITOR_SALT + key).encode(),
+                                   digest_size=6).hexdigest(),
     }
     with open(EVENTS_FILE, "a") as f:
         f.write(json.dumps(event) + "\n")
