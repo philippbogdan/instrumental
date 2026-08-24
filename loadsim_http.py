@@ -66,7 +66,16 @@ class Sampler(threading.Thread):
 
 def _request(path, ip, data=None, headers=None, timeout=900):
     req = urllib.request.Request(BASE + path, data=data, method='POST' if data else 'GET')
-    req.add_header('cf-connecting-ip', ip)
+    # Only against the local service: Cloudflare rejects a request that tries
+    # to set its own client-address header, and in front of the tunnel it sets
+    # the real one anyway.
+    if BASE.startswith('http://127.'):
+        req.add_header('cf-connecting-ip', ip)
+    # Cloudflare's bot protection 403s the default urllib agent, so against the
+    # public hostname the harness has to look like a browser.
+    req.add_header('User-Agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                                 'AppleWebKit/537.36 (KHTML, like Gecko) '
+                                 'Chrome/141.0 Safari/537.36')
     for k, v in (headers or {}).items():
         req.add_header(k, v)
     with urllib.request.urlopen(req, timeout=timeout) as r:

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The Cloudflare tunnel that puts api.philippbogdan.com in front of the
+     matching backend on 127.0.0.1:8801. No port is opened and the home address
+     is never exposed.
+
+     Config and credentials live in ~/.cloudflared (config.yml plus the
+     tunnel's own JSON, which is a secret).
+
+     Install:  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.philippbogdan.instrumental-tunnel.plist
+     Stop:     launchctl bootout gui/$(id -u)/com.philippbogdan.instrumental-tunnel
+     Logs:     ~/Library/Logs/instrumental-tunnel.log
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.philippbogdan.instrumental-tunnel</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/cloudflared</string>
+    <string>--no-autoupdate</string>
+    <string>tunnel</string>
+    <string>run</string>
+    <string>instrumental-api</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/phil/Library/Logs/instrumental-tunnel.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/phil/Library/Logs/instrumental-tunnel.log</string>
+</dict>
+</plist>
