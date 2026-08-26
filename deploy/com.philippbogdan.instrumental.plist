@@ -19,7 +19,7 @@
   <array>
     <string>/Users/phil/.venv/default/bin/python</string>
     <string>-c</string>
-    <string>import sys; sys.path.insert(0, "/Users/phil/instrumental"); import uvicorn; from app.server import app; uvicorn.run(app, host="127.0.0.1", port=8801, log_level="warning")</string>
+    <string>import sys; sys.path.insert(0, "/Users/phil/instrumental"); import uvicorn; from server.server import app; uvicorn.run(app, host="127.0.0.1", port=8801, log_level="warning")</string>
   </array>
 
   <key>WorkingDirectory</key>

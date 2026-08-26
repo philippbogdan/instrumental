@@ -1,0 +1,11 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch({ headless: false });
+const ctx = await b.newContext({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 1 });
+const p = await ctx.newPage();
+await p.goto('http://127.0.0.1:8801/', { waitUntil: 'load' });
+await p.waitForTimeout(1200);
+await p.screenshot({ path: '/tmp/probe-landing.png' });
+await p.click('.demo-card[data-demo="gunnr"]');
+await p.waitForTimeout(4000);
+await p.screenshot({ path: '/tmp/probe-demo.png', fullPage: true });
+await b.close();
