@@ -48,12 +48,11 @@ header {
   position: relative;
 }
 
-/* The way back to the paper: a white square pinned top right, dimming under
-   the pointer and the press. */
-.paper-link {
+/* The corner squares: the paper top right, the way back to the main site top
+   left. Plain white, dimming under the pointer and the press. */
+.corner-link {
   position: absolute;
   top: 20px;
-  right: 20px;
   padding: 9px 14px;
   border: 1px solid #fff;
   color: #fff;
@@ -64,8 +63,10 @@ header {
   text-decoration: none;
   transition: opacity 0.12s;
 }
-.paper-link:hover { opacity: 0.55; }
-.paper-link:active { opacity: 0.35; }
+.corner-link:hover { opacity: 0.55; }
+.corner-link:active { opacity: 0.35; }
+.paper-link { right: 20px; }
+.home-link { left: 20px; letter-spacing: 0; }
 
 .logo {
   font-family: 'JetBrains Mono', monospace;
@@ -1094,10 +1095,15 @@ header {
 /* ── Responsive ────────────────────────────────── */
 
 @media (max-width: 600px) {
+  /* The corner squares and the logo cannot share a line at this width, so
+     the squares keep the corners and the logo drops below them. */
   header {
-    padding-top: 36px;
+    padding-top: 64px;
     padding-bottom: 28px;
   }
+  .corner-link { top: 14px; padding: 7px 11px; font-size: 0.62rem; }
+  .paper-link { right: 14px; }
+  .home-link { left: 14px; }
 
   .logo {
     font-size: 1.3rem;
@@ -1119,6 +1125,13 @@ header {
   .keyboard-container .key.black {
     height: 75px;
   }
+
+  /* 37 keys in under 400px: the per-key labels collide into noise, and the
+     export button was sitting on top of the keys. Labels go; the button
+     moves to its own line under the keyboard. */
+  .keyboard-container { overflow: visible; margin-bottom: 56px; }
+  .keyboard-container .key-label { display: none; }
+  .export-btn { bottom: -48px; left: 50%; transform: translateX(-50%); white-space: nowrap; }
 
   .match-btn {
     padding: 12px;
