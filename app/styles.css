@@ -45,7 +45,27 @@ header {
   text-align: center;
   padding-top: 60px;
   padding-bottom: 48px;
+  position: relative;
 }
+
+/* The way back to the paper: a white square pinned top right, dimming under
+   the pointer and the press. */
+.paper-link {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  padding: 9px 14px;
+  border: 1px solid #fff;
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-decoration: none;
+  transition: opacity 0.12s;
+}
+.paper-link:hover { opacity: 0.55; }
+.paper-link:active { opacity: 0.35; }
 
 .logo {
   font-family: 'JetBrains Mono', monospace;
