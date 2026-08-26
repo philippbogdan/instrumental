@@ -1,4 +1,4 @@
-"""FastAPI backend for INSTRUMENTAL — inverse synthesis web app."""
+"""FastAPI backend for INSTRUMENTAL: inverse synthesis web app."""
 
 import sys
 import os

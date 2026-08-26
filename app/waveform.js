@@ -28,7 +28,7 @@ class WaveformViz {
   /**
    * Draw a time-domain waveform from an AudioBuffer.
    * For each pixel column, computes min/max sample values and draws
-   * a vertical line between them — the classic "overview" waveform style.
+   * a vertical line between them, the classic "overview" waveform style.
    * @param {AudioBuffer} audioBuffer
    */
   drawWaveform(audioBuffer) {
@@ -103,7 +103,7 @@ class WaveformViz {
     // In-place Cooley-Tukey FFT
     this._fft(real, imag);
 
-    // Compute magnitude spectrum (only first half — positive frequencies)
+    // Compute magnitude spectrum (only first half, the positive frequencies)
     const halfFFT = fftSize / 2;
     const magnitudes = new Float32Array(halfFFT);
     let maxMag = 0;

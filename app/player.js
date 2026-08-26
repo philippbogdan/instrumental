@@ -1,10 +1,10 @@
 /**
- * AudioPlayer — lightweight audio playback controller.
+ * AudioPlayer: lightweight audio playback controller.
  * Expects a container element with the following child elements:
- *   .player-play-btn   — button to toggle play/pause
- *   .player-progress    — clickable progress bar track
- *   .player-progress-fill — inner fill element for progress
- *   .player-time        — text element showing current / total time
+ *   .player-play-btn      button to toggle play/pause
+ *   .player-progress      clickable progress bar track
+ *   .player-progress-fill inner fill element for progress
+ *   .player-time          text element showing current / total time
  */
 class AudioPlayer {
   constructor(containerElement) {

@@ -1,5 +1,5 @@
 /**
- * PianoKeyboard — 2-octave on-screen piano keyboard (Vital-style)
+ * PianoKeyboard: 2-octave on-screen piano keyboard (Vital-style)
  * Depends on InstrumentalSynth (synth.js loaded before this file).
  */
 

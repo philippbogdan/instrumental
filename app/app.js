@@ -205,7 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
     keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 2, numOctaves: 4 });
     keyboard.render();
     kbContainer.style.position = 'relative';
-    // No scroll centering needed — keyboard fits in view
+    // No scroll centering needed: keyboard fits in view
 
     // Export button
     const exportBtn = document.createElement('button');
@@ -1009,7 +1009,7 @@ document.addEventListener('DOMContentLoaded', () => {
     keyboard = new PianoKeyboard(kbContainer, synth, { startOctave: 2, numOctaves: 4 });
     keyboard.render();
     kbContainer.style.position = 'relative';
-    // No scroll centering needed — keyboard fits in view
+    // No scroll centering needed: keyboard fits in view
 
     // Export button
     const exportBtn = document.createElement('button');
@@ -1076,7 +1076,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'to match this noise instead of the actual synth sound.' +
         '<br><br>' +
         'The cherrypicked examples on the landing page use clean, manually recorded ' +
-        'synth samples — that\'s why they sound much closer to the original.' +
+        'synth samples, which is why they sound much closer to the original.' +
         '<br><br>' +
         'For best results, upload a clean recording of just the synth part.' +
         '</div>';
