@@ -146,4 +146,3 @@ cd ui && python -m http.server 8080
 
 Built at the [Mozart AI Hack](https://lu.ma/mozartai), London, March 14 to 15 2026.
 
-*Built with Claude Code.*
