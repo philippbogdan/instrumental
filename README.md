@@ -104,25 +104,22 @@ Only one thing worked. Everything else made it worse.
 
 ```
 instrumental/
-├── src/
-│   ├── synth.py           # 28 param differentiable synthesizer
-│   ├── synth_gpu.py        # Batched GPU variant
-│   ├── losses.py           # 8 loss functions (STFT, mel, MFCC, centroid, etc.)
-│   ├── batch_loss.py       # Batched loss for CMA-ES
-│   ├── optimize.py         # CMA-ES + Adam optimization pipeline
-│   ├── spectral_init.py    # Spectral analysis, smart init params
+├── src/                # the synth, the losses, the CMA-ES pipeline
+│   ├── synth.py            # 28 param differentiable synthesizer
+│   ├── synth_gpu.py        # batched GPU variant
+│   ├── losses.py           # 8 loss functions (STFT, mel, MFCC, centroid, ...)
+│   ├── spectral_init.py    # spectral analysis, smart init params
 │   └── cmaes_search.py     # CMA-ES wrapper
-├── paper/
-│   └── main.tex            # Research paper (4 pages, LaTeX)
-├── ui/
-│   └── index.html          # Visualization dashboard
-├── train_rl.py             # RL agent (PPO, gymnasium)
-├── run_hypotheses.py       # 8 hypothesis test harness
-├── run_cmaes_gpu.py        # Batched CMA-ES runner
-├── notes/                  # 22 extracted target notes (.wav)
-├── output/                 # Matched audio + paper PDF
-├── DIRECTIONS.md           # All possible approaches explored
-└── DELIVERABLES.md         # SMART criteria for Levels 0 to 8
+├── server/             # backend for the live demo at /instrumental
+├── deploy/             # Mac mini + Cloudflare tunnel deployment notes
+├── experiments/        # every runner from the build, kept as run
+│                       # (run_hypotheses.py is the 8-test harness)
+├── paper/              # LaTeX source; PDF in output/
+├── ui/                 # dashboard + the original/matched demo audio
+├── research/           # background notes: synthesis, the Vital format
+├── output/             # matched audio, paper PDF, RL agent, best preset
+├── DIRECTIONS.md       # the plan as written on the hackathon night
+└── DELIVERABLES.md     # the Level 0 to 8 success criteria
 ```
 
 ## Quick Start
@@ -131,13 +128,13 @@ instrumental/
 pip install torch torchaudio torchsynth auraloss soundfile librosa cma
 
 # Play the comparison
-python play_notes.py
+python experiments/play_notes.py
 
 # Run CMA-ES optimization on a target sound
-python run_cmaes_v2.py
+python experiments/run_cmaes_v2.py
 
 # Run all 8 hypothesis tests
-python run_hypotheses.py
+python experiments/run_hypotheses.py
 
 # View the UI
 cd ui && python -m http.server 8080
